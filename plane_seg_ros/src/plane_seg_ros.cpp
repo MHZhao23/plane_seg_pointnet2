@@ -100,9 +100,9 @@ Pass::Pass(ros::NodeHandle node_):
     node_(node_),
     tfBuffer_(ros::Duration(5.0)),
     tfListener_(tfBuffer_) {
-  grid_map_sub_ = node_.subscribe("/elevation_mapping/elevation_map", 100,
+  grid_map_sub_ = node_.subscribe("/os_sensor", 100,
                                     &Pass::elevationMapCallback, this);
-  point_cloud_sub_ = node_.subscribe("/plane_seg/point_cloud_in", 100,
+  point_cloud_sub_ = node_.subscribe("/ouster/points2", 100,
                                     &Pass::pointCloudCallback, this);
 
   received_cloud_pub_ = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg/received_cloud", 10);
@@ -297,7 +297,7 @@ void Pass::processCloud(const std::string& cloudFrame, planeseg::LabeledCloud::P
   planeseg::BlockFitter fitter;
   fitter.setSensorPose(origin, lookDir);
   fitter.setCloud(inCloud);
-  fitter.setDebug(false); // MFALLON modification
+  fitter.setDebug(true); // MFALLON modification
   fitter.setRemoveGround(false); // MFALLON modification from default
 
   // this was 5 for LIDAR. changing to 10 really improved elevation map segmentation
@@ -386,6 +386,8 @@ void Pass::publishResult(const std::string& cloud_frame){
     pcl::PointCloud<pcl::PointXYZ> cloud;
     const auto& block = result_.mBlocks[i];
     cloud.points.reserve(block.mHull.size());
+
+    if (block.mHull.size() == 0) continue;
     for (size_t j =0; j < block.mHull.size(); ++j){
       pcl::PointXYZ pt;
       pt.x =block.mHull[j](0);
@@ -612,6 +614,7 @@ int main( int argc, char** argv ){
 
   ros::init(argc, argv, "plane_seg");
   ros::NodeHandle nh("~");
+  Pass pass_pt (nh);
   std::unique_ptr<Pass> app = std::make_unique<Pass>(nh);
 
   ROS_INFO_STREAM("plane_seg ros ready");
@@ -638,6 +641,8 @@ int main( int argc, char** argv ){
   }
 
   ROS_INFO_STREAM("Waiting for ROS messages");
+  ros::Subscriber point_cloud_sub_ = nh.subscribe ("/ouster/points", 100,
+                                    &Pass::pointCloudCallback, &pass_pt); // new
   ros::spin();
 
   return 1;

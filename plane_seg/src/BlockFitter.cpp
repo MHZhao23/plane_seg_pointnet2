@@ -125,6 +125,11 @@ setDebug(const bool iVal) {
 
 BlockFitter::Result BlockFitter::
 go() {
+  if (mDebug) {
+    std::cout << "******* begin plane fitting *******" << std::endl;
+  }
+  auto global_t0 = std::chrono::high_resolution_clock::now();
+
   Result result;
   result.mSuccess = false;
 
@@ -161,8 +166,14 @@ go() {
   pose.linear() = rotation;
   pose.translation() = mOrigin;
 
-  // ground removal
+  // ---------------- remove ground ----------------
+  // find a ground plane and remove points below or near ground
   if (mRemoveGround) {
+    auto t0 = std::chrono::high_resolution_clock::now();
+    if (mDebug) {
+      std::cout << "Moving ground..." << std::flush;
+    }
+
     Eigen::Vector4f groundPlane;
 
     // filter points
@@ -257,9 +268,15 @@ go() {
         std::cout << "Filtered cloud size " << cloud->size() << std::endl;
       }
     }
+
+    if (mDebug) {
+      auto t1 = std::chrono::high_resolution_clock::now();
+      auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
+      std::cout << "finished in " << dt.count()/1e3 << " sec" << std::endl;
+    }
   }
 
-  // normal estimation
+  // ---------------- normal estimation ----------------
   auto t0 = std::chrono::high_resolution_clock::now();
   if (mDebug) {
     std::cout << "computing normals..." << std::flush;
@@ -277,7 +294,12 @@ go() {
     std::cout << "finished in " << dt.count()/1e3 << " sec" << std::endl;
   }
 
-  // filter non-horizontal points
+  // ---------------- filt non-horizontal points ----------------
+  t0 = std::chrono::high_resolution_clock::now();
+  if (mDebug) {
+    std::cout << "filt non-horizontal points..." << std::flush;
+  }
+
   const float maxNormalAngle = mMaxAngleFromHorizontal*M_PI/180;
   LabeledCloud::Ptr tempCloud(new LabeledCloud());
   NormalCloud::Ptr tempNormals(new NormalCloud());
@@ -295,16 +317,21 @@ go() {
   std::swap(tempNormals, normals);
 
   if (mDebug) {
+    auto t1 = std::chrono::high_resolution_clock::now();
+    auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
+    std::cout << "finished in " << dt.count()/1e3 << " sec" << std::endl;
+
     std::cout << "Horizontal points remaining " << cloud->size() << std::endl;
     pcl::io::savePCDFileBinary("cloud.pcd", *cloud);
     pcl::io::savePCDFileBinary("robust_normals.pcd", *normals);
   }
 
-  // plane segmentation
+  // ---------------- plane segmentation ----------------
   t0 = std::chrono::high_resolution_clock::now();
   if (mDebug) {
     std::cout << "segmenting planes..." << std::flush;
   }
+
   PlaneSegmenter segmenter;
   segmenter.setData(cloud, normals);
   segmenter.setMaxError(0.05);
@@ -313,6 +340,7 @@ go() {
   segmenter.setMaxAngle(mMaxAngleOfPlaneSegmenter);
   segmenter.setMinPoints(100);
   PlaneSegmenter::Result segmenterResult = segmenter.go();
+
   if (mDebug) {
     auto t1 = std::chrono::high_resolution_clock::now();
     auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
@@ -332,7 +360,12 @@ go() {
     ofs.close();
   }
 
-  // create point clouds
+  // ---------------- create point clouds for each cluster ----------------
+  t0 = std::chrono::high_resolution_clock::now();
+  if (mDebug) {
+    std::cout << "creating point clouds for each cluster..." << std::flush;
+  }
+
   std::unordered_map<int,std::vector<Eigen::Vector3f>> cloudMap;
   for (int i = 0; i < (int)segmenterResult.mLabels.size(); ++i) {
     int label = segmenterResult.mLabels[i];
@@ -354,6 +387,18 @@ go() {
     planes.push_back(plane);
   }
 
+  if (mDebug) {
+    auto t1 = std::chrono::high_resolution_clock::now();
+    auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
+    std::cout << "finished in " << dt.count()/1e3 << " sec" << std::endl;
+  }
+
+  // ---------------- fit the segmented plane to a rectangle ----------------
+  t0 = std::chrono::high_resolution_clock::now();
+  if (mDebug) {
+    std::cout << "fitting the segmented plane to a rectangle..." << std::flush;
+  }
+
   std::vector<RectangleFitter::Result> results;
   results.reserve(planes.size());
   for (auto& plane : planes) {
@@ -366,6 +411,10 @@ go() {
   }
 
   if (mDebug) {
+    auto t1 = std::chrono::high_resolution_clock::now();
+    auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
+    std::cout << "finished in " << dt.count()/1e3 << " sec" << std::endl;
+
     std::ofstream ofs("boxes.txt");
     for (int i = 0; i < (int)results.size(); ++i) {
       auto& res = results[i];
@@ -393,6 +442,12 @@ go() {
     ofs.close();
   }
 
+  // ---------------- get blocks ----------------
+  t0 = std::chrono::high_resolution_clock::now();
+  if (mDebug) {
+    std::cout << "getting blocks..." << std::flush;
+  }
+
   for (int i = 0; i < (int)results.size(); ++i) {
     const auto& res = results[i];
 
@@ -413,10 +468,22 @@ go() {
     block.mHull = res.mConvexHull;
     result.mBlocks.push_back(block);
   }
+
   if (mDebug) {
+    auto t1 = std::chrono::high_resolution_clock::now();
+    auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
+    std::cout << "finished in " << dt.count()/1e3 << " sec" << std::endl;
+
     std::cout << "Surviving blocks: " << result.mBlocks.size() << std::endl;
   }
 
   result.mSuccess = true;
+
+  if (mDebug) {
+    auto global_t1 = std::chrono::high_resolution_clock::now();
+    auto global_dt = std::chrono::duration_cast<std::chrono::milliseconds>(global_t1-global_t0);
+    std::cout << "******* plane segmentation finished in " << global_dt.count()/1e3 << " sec *******" << std::endl;
+  }
+
   return result;
 }
