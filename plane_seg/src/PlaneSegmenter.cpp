@@ -9,17 +9,16 @@ using namespace planeseg;
 
 PlaneSegmenter::
 PlaneSegmenter() {
-  setMaxError(0.02);
-  setMaxAngle(30);
-  setSearchRadius(0.03);
-  setMinPoints(500);
+  // setMaxAngle(30);
+  // setSearchRadius(0.03);
+  // setMinPoints(500);
 }
 
 void PlaneSegmenter::
 setData(const LabeledCloud::Ptr& iCloud,
         const NormalCloud::Ptr& iNormals) {
   mCloud = iCloud;
-    mNormals = iNormals;
+  mNormals = iNormals;
 }
 
 void PlaneSegmenter::
@@ -49,8 +48,7 @@ go() {
   const int n = mCloud->size();
 
   // create kdtree and get nearest neighbors list
-  pcl::search::KdTree<Point>::Ptr tree
-    (new pcl::search::KdTree<Point>());
+  pcl::search::KdTree<Point>::Ptr tree (new pcl::search::KdTree<Point>());
   tree->setInputCloud(mCloud);
   std::vector<std::vector<int>> neighbors(n);
   std::vector<float> distances;
@@ -71,63 +69,43 @@ go() {
     }
   }
 
-  // hitmask
-  std::vector<bool> hitMask(n);
-  for (int i = 0; i < n; ++i) {
-    hitMask[i] = (mNormals->points[i].curvature < 0);
-  }
-
   // create labels
-  std::vector<int> labels(n);
-  std::fill(labels.begin(), labels.end(), 0);
-  IncrementalPlaneEstimator planeEst;
-  int curLabel = 1;
+  std::vector<int> labels(n); // which cluster the point belongs to (0, 1, ... curLabel)
+  std::fill(labels.begin(), labels.end(), -1);
+  std::vector<int> pointsLabels(n); // which large component the point belongs to (-1, 0, 1, ... vaildLabel)
+  std::fill(pointsLabels.begin(), pointsLabels.end(), -1);
+  pointsClustering pointsCluster;
+  int curLabel = 0;
+  int vaildLabel = 0;
+  // std::vector<int> clusterLables; // 0, 1, 2, 3, 4, ...
+  std::vector<int> validLables; // 0, -1, 1, -1, 2 ...
   std::deque<int> workQueue;
 
-  // create label-to-plane mapping
-  struct Plane {
-    Eigen::Vector4f mPlane;
-    int mCount;
-    int mLabel;
-  };
-  std::vector<Plane> planes;
-
   auto processPoint = [&](const int iIndex) {
-    if (hitMask[iIndex]) return false;
-    const Eigen::Vector3f& pt = mCloud->points[iIndex].getVector3fMap();
-    const auto& cloudNorm = mNormals->points[iIndex];
-    const Eigen::Vector3f norm(cloudNorm.normal_x, cloudNorm.normal_y,
-                               cloudNorm.normal_z);
-    if (planeEst.tryPoint(pt, norm, mMaxError, mMaxAngle)) {
-      labels[iIndex] = curLabel;
-      hitMask[iIndex] = true;
-      planeEst.addPoint(pt);
-      for (const auto idx : neighbors[iIndex]) {
-        if (!hitMask[idx] && (labels[idx]<=0)) workQueue.push_back(idx);
+      if (labels[iIndex] < 0) {
+      // std::cout << iIndex << ", " << std::flush;
+      const auto& cloudNorm = mNormals->points[iIndex];
+      const Eigen::Vector3f norm(cloudNorm.normal_x, cloudNorm.normal_y,
+                                cloudNorm.normal_z);
+      if (pointsCluster.tryPoint(norm, mMaxAngle)) {
+        labels[iIndex] = curLabel;
+        pointsCluster.addPoint(norm);
+        for (const auto idx : neighbors[iIndex]) {
+          if (labels[idx] < 0) workQueue.push_back(idx);
+        }
+        return true;
       }
-      return true;
+      return false;
     }
     return false;
   };
 
-  // create list of points ordered by curvature
-  std::vector<int> allIndices;
-  allIndices.reserve(n);
-  for (int i = 0; i < n; ++i) {
-    if (!hitMask[i]) allIndices.push_back(i);
-  }
-  std::sort(allIndices.begin(), allIndices.end(),
-            [this](const int iA, const int iB)
-            { return mNormals->points[iA].curvature <
-              mNormals->points[iB].curvature; });
-
   // iterate over points
-  for (const auto idx : allIndices) {
-    if (hitMask[idx]) continue;
-    if (labels[idx] > 0) continue;
+  for (int idx = 0; idx < n; ++idx) {
+    if (labels[idx] >= 0) continue;
 
     // start new component
-    planeEst.reset();
+    pointsCluster.reset();
     workQueue.clear();
     workQueue.push_back(idx);
 
@@ -136,54 +114,59 @@ go() {
       workQueue.pop_front();
     }
 
-    // add new plane
-    Plane plane;
-    plane.mPlane = planeEst.getCurrentPlane();
-    plane.mCount = planeEst.getNumPoints();
-    plane.mLabel = curLabel;
-    planes.push_back(plane);
-
+    // add new cluster
+    int clusterSize = pointsCluster.getNumPoints();
+    if (clusterSize > mMinPoints) {
+      // std::cout << "get cluster " << curLabel << " with " << clusterSize << " points " << std::endl;
+      // clusterLables.push_back(curLabel);
+      validLables.push_back(vaildLabel);
+      result.clusterSizes.push_back(clusterSize);
+      vaildLabel += 1;
+    }
+    else {
+      // clusterLables.push_back(-1);
+      validLables.push_back(-1);
+    }
     ++curLabel;
   }
 
-  // second pass
+  // for (int i = 0; i < n; ++i) {
+  //   pointsLabels[i] = validLables[labels[i]];
+  // }
 
-  // unlabel small components
-  std::sort(planes.begin(), planes.end(),
-            [](const Plane& iA, const Plane& iB) {
-              return iA.mCount>iB.mCount;});
-  std::vector<int> lut(curLabel);
-  for (int i = 0; i < (int)lut.size(); ++i) lut[i] = i;
-  for (int i = 0; i < (int)planes.size(); ++i) {
-    if (planes[i].mCount < mMinPoints) lut[planes[i].mLabel] = -1;
-  }
+  // std::cout << "\nclusterLables: " << std::endl;
+  // for (int i = 0; i < curLabel; ++i) std::cout << clusterLables[i] << ", " << std::flush;
+
+  // std::cout << "\nvalidLables: " << std::endl;
+  // for (int i = 0; i < curLabel; ++i) std::cout << validLables[i] << ", " << std::flush;
+
+  // std::cout << "\nlabels: " << std::endl;
+  // for (int i = 0; i < n; ++i) std::cout << labels[i] << ", " << std::flush;
+
+  // std::cout << "\npointLabels: " << std::endl;
+  // for (int i = 0; i < n; ++i) std::cout << pointsLabels[i] << ", " << std::flush;
+
+  std::unordered_map<int,std::vector<Eigen::Vector3f>> cloudMap;
   for (int i = 0; i < n; ++i) {
-    if (!hitMask[i]) continue;
-    int newLabel = lut[labels[i]];
-    if (newLabel < 0) {
-      hitMask[i] = false;
-      labels[i] = 0;
-    }
+    int iLabel = validLables[labels[i]];
+    pointsLabels[i] = iLabel;
+    if (iLabel >= 0) cloudMap[iLabel].push_back(mCloud->points[i].getVector3fMap());
   }
 
-  // remap labels
-  std::unordered_map<int,Plane> planeMap;
-  for (const auto& plane : planes) planeMap[plane.mLabel] = plane;
-  int counter = 1;
-  std::unordered_map<int,Eigen::Vector4f> planeMapNew;
-  for (int& idx : lut) {
-    if (idx <= 0) continue;
-    Plane plane = planeMap[idx];
-    idx = counter++;
-    plane.mLabel = idx;
-    planeMapNew[idx] = plane.mPlane;
+  std::vector<MatrixX3f> clusterPoints;
+  clusterPoints.reserve(cloudMap.size());
+  for (auto it : cloudMap) {
+    int singleCloudSize = it.second.size();
+    // std::cout << "\tcluster size: " << singleCloudSize << std::flush;
+    MatrixX3f singleCloud;
+    singleCloud.resize(singleCloudSize,3);
+    for (int i = 0; i < singleCloudSize; ++i) singleCloud.row(i) = it.second[i];
+    clusterPoints.push_back(singleCloud);
   }
-  for (int i = 0; i < n; ++i) {
-    auto& label = labels[i];
-    label = lut[label];
-  }
-    
-  result.mLabels = labels;
-  result.mPlanes = planeMapNew;
+
+  result.mClusters = clusterPoints;
+  result.mLabels = pointsLabels;
+  result.mClusterNum = vaildLabel;
+
   return result;
 }

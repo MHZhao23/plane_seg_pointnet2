@@ -30,11 +30,12 @@
 
 
 #include "plane_seg/PlaneFitter.hpp"
-#include "plane_seg/RobustNormalEstimator.hpp"
 #include "plane_seg/PlaneSegmenter.hpp"
 #include "plane_seg/RectangleFitter.hpp"
 
 using namespace planeseg;
+using namespace std::chrono_literals; // to recognize ms in sleep for
+
 
 BlockFitter::
 BlockFitter() {
@@ -46,10 +47,13 @@ BlockFitter() {
   setHeightBand(0.05, 1.0);
   setMaxRange(3.0);
   setMaxAngleFromHorizontal(45);
-  setMaxAngleOfPlaneSegmenter(5);
+  setMaxEstimationError(0.02); // RANSAC
+  setMaxIterations(1000); // RANSAC
+  // setMaxAngleOfPlaneSegmenter(5);
   setAreaThresholds(0.5, 1.5);
   setRectangleFitAlgorithm(RectangleFitAlgorithm::MinimumArea);
   setDebug(true);
+  setVisual(false);
 }
 
 void BlockFitter::
@@ -103,6 +107,16 @@ setMaxAngleOfPlaneSegmenter(const float iDegrees) {
 }
 
 void BlockFitter::
+setMaxIterations(const int iIters) {
+  mMaxIterations = iIters;
+}
+
+void BlockFitter::
+setMaxEstimationError(const float iDist) {
+  mMaxEstimationError = iDist;
+}
+
+void BlockFitter::
 setAreaThresholds(const float iMin, const float iMax) {
   mAreaThreshMin = iMin;
   mAreaThreshMax = iMax;
@@ -123,6 +137,11 @@ setDebug(const bool iVal) {
   mDebug = iVal;
 }
 
+void BlockFitter::
+setVisual(const bool iVal) {
+  mVisual = iVal;
+}
+
 BlockFitter::Result BlockFitter::
 go() {
   if (mDebug) {
@@ -135,6 +154,7 @@ go() {
 
   if (mCloud->size() < 100) return result;
 
+  // ---------------- filtter ----------------
   // voxelize
   LabeledCloud::Ptr cloud(new LabeledCloud());
   pcl::VoxelGrid<pcl::PointXYZL> voxelGrid;
@@ -143,6 +163,38 @@ go() {
                         mDownsampleResolution);
   voxelGrid.filter(*cloud);
   for (int i = 0; i < (int)cloud->size(); ++i) cloud->points[i].label = i;
+
+  // // passthrough
+  // pcl::PassThrough<pcl::PointXYZL> passThrough;
+  // passThrough.setInputCloud (cloud);
+  // // passThrough.setKeepOrganized(true);
+  // passThrough.setFilterFieldName ("x");
+  // passThrough.setFilterLimits (-3, 3);
+  // passThrough.filter (*cloud);
+
+  // passThrough.setInputCloud(cloud);
+  // passThrough.setFilterFieldName ("y");
+  // passThrough.setFilterLimits (-3, 3);
+  // passThrough.filter (*cloud);
+  
+  // passThrough.setInputCloud(cloud);
+  // passThrough.setFilterFieldName ("z");
+  // passThrough.setFilterLimits (-3, 3);
+  // passThrough.filter (*cloud);
+
+  // // crop 3m
+  // pcl::CropBox<pcl::PointXYZL> cropBox;
+  // cropBox.setInputCloud(cloud);
+  // Eigen::Vector4f max_pt;
+  // Eigen::Vector4f min_pt;
+  // max_pt << 3, 3, 3, 1;
+  // min_pt << -3, -3, -3, 1;
+  // cropBox.setMax(max_pt);
+  // cropBox.setMin(min_pt);
+  // // cropBox.setKeepOrganized(true); // some points are filled by NaN
+  // cropBox.filter(*cloud);
+
+  std::cout << "voxelized cloud structure: " << cloud->width << ", " << cloud->height << std::endl;
 
   if (mDebug) {
     std::cout << "Original cloud size " << mCloud->size() << std::endl;
@@ -166,128 +218,59 @@ go() {
   pose.linear() = rotation;
   pose.translation() = mOrigin;
 
-  // ---------------- remove ground ----------------
-  // find a ground plane and remove points below or near ground
-  if (mRemoveGround) {
-    auto t0 = std::chrono::high_resolution_clock::now();
-    if (mDebug) {
-      std::cout << "Moving ground..." << std::flush;
-    }
-
-    Eigen::Vector4f groundPlane;
-
-    // filter points
-    float minZ = mMinGroundZ;
-    float maxZ = mMaxGroundZ;
-    if ((minZ > 10000) && (maxZ > 10000)) {
-      std::vector<float> zVals(cloud->size());
-      for (int i = 0; i < (int)cloud->size(); ++i) {
-        zVals[i] = cloud->points[i].z;
-      }
-      std::sort(zVals.begin(), zVals.end());
-      minZ = zVals[0]-0.1;
-      maxZ = minZ + 0.5;
-    }
-    LabeledCloud::Ptr tempCloud(new LabeledCloud());
-    tempCloud->reserve(cloud->size());
-    for (int i = 0; i < (int)cloud->size(); ++i) {
-      const Eigen::Vector3f& p = cloud->points[i].getVector3fMap();
-      if ((p[2] < minZ) || (p[2] > maxZ)) continue;
-      tempCloud->push_back(cloud->points[i]);
-    }
-
-    // downsample
-    voxelGrid.setInputCloud(tempCloud);
-    voxelGrid.setLeafSize(0.1, 0.1, 0.1);
-    voxelGrid.filter(*tempCloud);
-
-    if (tempCloud->size() < 100) return result;
-
-    // find ground plane
-    std::vector<Eigen::Vector3f> pts(tempCloud->size());
-    for (int i = 0; i < (int)tempCloud->size(); ++i) {
-      pts[i] = tempCloud->points[i].getVector3fMap();
-    }
-    const float kGroundPlaneDistanceThresh = 0.01; // TODO: param
-    PlaneFitter planeFitter;
-    planeFitter.setMaxDistance(kGroundPlaneDistanceThresh);
-    planeFitter.setRefineUsingInliers(true);
-    auto res = planeFitter.go(pts);
-    groundPlane = res.mPlane;
-    if (groundPlane[2] < 0) groundPlane = -groundPlane;
-    if (mDebug) {
-      std::cout << "dominant plane: " << groundPlane.transpose() << std::endl;
-      std::cout << "  inliers: " << res.mInliers.size() << std::endl;
-    }
-
-    if (std::acos(groundPlane[2]) > 30*M_PI/180) {
-      std::cout << "error: ground plane not found!" << std::endl;
-      std::cout << "proceeding with full segmentation (may take a while)..." <<
-        std::endl;
-    }
-
-    else {
-      // compute convex hull
-      result.mGroundPlane = groundPlane;
-      {
-        tempCloud.reset(new LabeledCloud());
-        tempCloud->reserve(cloud->size());
-        for (int i = 0; i < (int)cloud->size(); ++i) {
-          Eigen::Vector3f p = cloud->points[i].getVector3fMap();
-          float dist = groundPlane.head<3>().dot(p) + groundPlane[3];
-          if (std::abs(dist) > kGroundPlaneDistanceThresh) continue;
-          p -= (groundPlane.head<3>()*dist);
-          pcl::PointXYZL cloudPt;
-          cloudPt.getVector3fMap() = p;
-          tempCloud->push_back(cloudPt);
-        }
-        pcl::ConvexHull<pcl::PointXYZL> chull;
-        pcl::PointCloud<pcl::PointXYZL> hull;
-        chull.setInputCloud(tempCloud);
-        chull.reconstruct(hull);
-        result.mGroundPolygon.resize(hull.size());
-        for (int i = 0; i < (int)hull.size(); ++i) {
-          result.mGroundPolygon[i] = hull[i].getVector3fMap();
-        }
-      }
-
-      // remove points below or near ground
-      tempCloud.reset(new LabeledCloud());
-      tempCloud->reserve(cloud->size());
-      for (int i = 0; i < (int)cloud->size(); ++i) {
-        Eigen::Vector3f p = cloud->points[i].getVector3fMap();
-        float dist = p.dot(groundPlane.head<3>()) + groundPlane[3];
-        if ((dist < mMinHeightAboveGround) ||
-            (dist > mMaxHeightAboveGround)) continue;
-        float range = (p-mOrigin).norm();
-        if (range > mMaxRange) continue;
-        tempCloud->push_back(cloud->points[i]);
-      }
-      std::swap(tempCloud, cloud);
-      if (mDebug) {
-        std::cout << "Filtered cloud size " << cloud->size() << std::endl;
-      }
-    }
-
-    if (mDebug) {
-      auto t1 = std::chrono::high_resolution_clock::now();
-      auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
-      std::cout << "finished in " << dt.count()/1e3 << " sec" << std::endl;
-    }
-  }
-
   // ---------------- normal estimation ----------------
   auto t0 = std::chrono::high_resolution_clock::now();
   if (mDebug) {
     std::cout << "computing normals..." << std::flush;
   }
-  RobustNormalEstimator normalEstimator;
-  normalEstimator.setMaxEstimationError(0.01);
-  normalEstimator.setRadius(0.1);
-  normalEstimator.setMaxCenterError(0.02);
-  normalEstimator.setMaxIterations(100);
+
+  // normal estimation by PCL library
   NormalCloud::Ptr normals(new NormalCloud());
-  normalEstimator.go(cloud, *normals);
+  pcl::NormalEstimationOMP<pcl::PointXYZL, pcl::Normal> norm_est;
+  norm_est.setKSearch (25); // best planes: 10 best clustering: 25
+  norm_est.setInputCloud (cloud);
+  norm_est.compute (*normals);
+
+  for (int i = 0; i < (int)normals->size(); ++i) {
+    if (normals->points[i].normal_z<0) {
+      normals->points[i].normal_x = -normals->points[i].normal_x;
+      normals->points[i].normal_y = -normals->points[i].normal_y;
+      normals->points[i].normal_z = -normals->points[i].normal_z;
+    }
+  }
+  
+  // // normal estimation by PCL library
+  // pcl::NormalEstimation<pcl::PointXYZL, pcl::Normal> ne;
+  // ne.setInputCloud (cloud);
+  // pcl::search::KdTree<pcl::PointXYZL>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZL> ());
+  // ne.setSearchMethod (tree);
+  // NormalCloud::Ptr normals(new NormalCloud());
+  // ne.setRadiusSearch (0.1);
+  // ne.compute (*normals);
+
+  // for (int i = 0; i < (int)normals->size(); ++i) {
+  //   if (normals->points[i].normal_z<0) {
+  //     normals->points[i].normal_x = -normals->points[i].normal_x;
+  //     normals->points[i].normal_y = -normals->points[i].normal_y;
+  //     normals->points[i].normal_z = -normals->points[i].normal_z;
+  //   }
+  // }
+
+  // // visualizer
+  // pcl::visualization::PCLVisualizer::Ptr viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
+  // viewer->setBackgroundColor (0, 0, 0);
+  // pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZL> rgb(cloud);
+  // viewer->addPointCloud<pcl::PointXYZL> (cloud, rgb, "sample cloud");
+  // viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "sample cloud");
+  // viewer->addPointCloudNormals<pcl::PointXYZL, pcl::Normal> (cloud, normals, 10, 0.05, "normals");
+  // viewer->addCoordinateSystem (1.0);
+  // viewer->initCameraParameters ();
+  // while (!viewer->wasStopped ())
+  // {
+  //   viewer->spinOnce (100);
+  //   std::this_thread::sleep_for(100ms);
+  // }
+  
   if (mDebug) {
     auto t1 = std::chrono::high_resolution_clock::now();
     auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
@@ -308,13 +291,15 @@ go() {
   for (int i = 0; i < (int)normals->size(); ++i) {
     // const auto& norm = normals->points[i];
     // Eigen::Vector3f normal(norm.normal_x, norm.normal_y, norm.normal_z);
-    float angle = std::acos(normals->points[i].normal_z);  //std::acos(normal[2]);
+    // float angle = std::acos(normals->points[i].normal_z);  //std::acos(normal[2]);
+    float angle = std::acos(std::abs(normals->points[i].normal_z));
     if (angle > maxNormalAngle) continue;
     tempCloud->push_back(cloud->points[i]);
     tempNormals->push_back(normals->points[i]);
   }
   std::swap(tempCloud, cloud);
   std::swap(tempNormals, normals);
+  result.filttedCloud = cloud;
 
   if (mDebug) {
     auto t1 = std::chrono::high_resolution_clock::now();
@@ -326,120 +311,132 @@ go() {
     pcl::io::savePCDFileBinary("robust_normals.pcd", *normals);
   }
 
-  // ---------------- plane segmentation ----------------
+  // ---------------- clustering by distance and curvature ----------------
   t0 = std::chrono::high_resolution_clock::now();
   if (mDebug) {
-    std::cout << "segmenting planes..." << std::flush;
+    std::cout << "clustering by distance and curvature..." << std::flush;
   }
 
   PlaneSegmenter segmenter;
   segmenter.setData(cloud, normals);
-  segmenter.setMaxError(0.05);
-  // setMaxAngle was 5 for LIDAR. changing to 10 really improved elevation map segmentation
-  // I think its because the RGB-D map can be curved
+  segmenter.setSearchRadius(0.03);
   segmenter.setMaxAngle(mMaxAngleOfPlaneSegmenter);
-  segmenter.setMinPoints(100);
+  segmenter.setMinPoints(200);
   PlaneSegmenter::Result segmenterResult = segmenter.go();
 
   if (mDebug) {
     auto t1 = std::chrono::high_resolution_clock::now();
     auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
     std::cout << "finished in " << dt.count()/1e3 << " sec" << std::endl;
-
-    std::ofstream ofs("labels.txt");
-    for (const int lab : segmenterResult.mLabels) {
-      ofs << lab << std::endl;
-    }
-    ofs.close();
-
-    ofs.open("planes.txt");
-    for (auto it : segmenterResult.mPlanes) {
-      auto& plane = it.second;
-      ofs << it.first << " " << plane.transpose() << std::endl;
-    }
-    ofs.close();
   }
 
-  // ---------------- create point clouds for each cluster ----------------
+  if (mVisual) {
+    // visualize cluster results
+    std::vector< pcl::PointCloud<pcl::PointXYZ>::Ptr > cloud_ptrs;
+    for (int j = 0; j < segmenterResult.mClusterNum; ++j) {
+        pcl::PointCloud<pcl::PointXYZ> clusterCloud;
+        for (int i = 0; i < (int)cloud->size(); ++i){
+          if (segmenterResult.mLabels[i] == j) {
+            pcl::PointXYZ pt;
+            pt.x = cloud->points[i].x;
+            pt.y = cloud->points[i].y;
+            pt.z = cloud->points[i].z;
+            clusterCloud.points.push_back(pt);
+          }
+        }
+        clusterCloud.height = clusterCloud.points.size();
+        clusterCloud.width = 1;
+
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_ptr;
+        cloud_ptr = clusterCloud.makeShared();
+        cloud_ptrs.push_back(cloud_ptr);
+    }
+    
+    std::vector<double> colors_ = {
+        51/255.0, 160/255.0, 44/255.0,  //0
+        166/255.0, 206/255.0, 227/255.0,
+        178/255.0, 223/255.0, 138/255.0,//6
+        31/255.0, 120/255.0, 180/255.0,
+        251/255.0, 154/255.0, 153/255.0,// 12
+        227/255.0, 26/255.0, 28/255.0,
+        253/255.0, 191/255.0, 111/255.0,// 18
+        106/255.0, 61/255.0, 154/255.0,
+        255/255.0, 127/255.0, 0/255.0, // 24
+        202/255.0, 178/255.0, 214/255.0,
+        1.0, 0.0, 0.0, // red // 30
+        0.0, 1.0, 0.0, // green
+        0.0, 0.0, 1.0, // blue// 36
+        1.0, 1.0, 0.0,
+        1.0, 0.0, 1.0, // 42
+        0.0, 1.0, 1.0,
+        0.5, 1.0, 0.0,
+        1.0, 0.5, 0.0,
+        0.5, 0.0, 1.0,
+        1.0, 0.0, 0.5,
+        0.0, 0.5, 1.0,
+        0.0, 1.0, 0.5,
+        1.0, 0.5, 0.5,
+        0.5, 1.0, 0.5,
+        0.5, 0.5, 1.0,
+        0.5, 0.5, 1.0,
+        0.5, 1.0, 0.5,
+        0.5, 0.5, 1.0};
+
+    pcl::PointCloud<pcl::PointXYZRGB> combined_cloud;
+    for (int i = 0; i < cloud_ptrs.size(); ++i) {
+      pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_rgb (new pcl::PointCloud<pcl::PointXYZRGB>);
+      pcl::copyPointCloud(*cloud_ptrs[i], *cloud_rgb);
+
+      int nColor = i % (colors_.size()/3);
+      double r = colors_[nColor*3]*255.0;
+      double g = colors_[nColor*3+1]*255.0;
+      double b = colors_[nColor*3+2]*255.0;
+      for (int j = 0; j < cloud_rgb->points.size (); j++){
+          cloud_rgb->points[j].r = r;
+          cloud_rgb->points[j].g = g;
+          cloud_rgb->points[j].b = b;
+      }
+      combined_cloud += *cloud_rgb;
+    }
+
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr combined_cloud_ptr;
+    combined_cloud_ptr = combined_cloud.makeShared();
+    pcl::visualization::CloudViewer viewer2 ("Cloud Viewer 2");
+    viewer2.showCloud(combined_cloud_ptr);  
+    while (!viewer2.wasStopped ()) {}
+
+  }
+
+  // ---------------- fit a plane for each cluster ----------------
   t0 = std::chrono::high_resolution_clock::now();
   if (mDebug) {
-    std::cout << "creating point clouds for each cluster..." << std::flush;
-  }
-
-  std::unordered_map<int,std::vector<Eigen::Vector3f>> cloudMap;
-  for (int i = 0; i < (int)segmenterResult.mLabels.size(); ++i) {
-    int label = segmenterResult.mLabels[i];
-    if (label <= 0) continue;
-    cloudMap[label].push_back(cloud->points[i].getVector3fMap());
-  }
-  struct Plane {
-    MatrixX3f mPoints;
-    Eigen::Vector4f mPlane;
-  };
-  std::vector<Plane> planes;
-  planes.reserve(cloudMap.size());
-  for (auto it : cloudMap) {
-    int n = it.second.size();
-    Plane plane;
-    plane.mPoints.resize(n,3);
-    for (int i = 0; i < n; ++i) plane.mPoints.row(i) = it.second[i];
-    plane.mPlane = segmenterResult.mPlanes[it.first];
-    planes.push_back(plane);
-  }
-
-  if (mDebug) {
-    auto t1 = std::chrono::high_resolution_clock::now();
-    auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
-    std::cout << "finished in " << dt.count()/1e3 << " sec" << std::endl;
-  }
-
-  // ---------------- fit the segmented plane to a rectangle ----------------
-  t0 = std::chrono::high_resolution_clock::now();
-  if (mDebug) {
-    std::cout << "fitting the segmented plane to a rectangle..." << std::flush;
+    std::cout << "fit each cluster to a plane and then to a rectangle..." << std::flush;
   }
 
   std::vector<RectangleFitter::Result> results;
-  results.reserve(planes.size());
-  for (auto& plane : planes) {
+  results.reserve(segmenterResult.mClusterNum);
+  for (int i = 0; i < segmenterResult.mClusterNum; ++i) {
+    // std::cout << "\ncluster " << i << " with size of " << segmenterResult.mClusters[i].size() << std::endl;
+    PlaneFitter planeFitter;
+    planeFitter.setMaxIterations(mMaxIterations);
+    planeFitter.setMaxDistance(mMaxEstimationError);
+    planeFitter.setRefineUsingInliers(true);
+    PlaneFitter::Result planeFitterRes = planeFitter.go(segmenterResult.mClusters[i]);
+    // std::cout << "\nFitted plane: " << planeFitterRes.mPlane << std::endl;
+
     RectangleFitter fitter;
     fitter.setDimensions(mBlockDimensions.head<2>());
     fitter.setAlgorithm((RectangleFitter::Algorithm)mRectangleFitAlgorithm);
-    fitter.setData(plane.mPoints, plane.mPlane);
+    fitter.setData(segmenterResult.mClusters[i], planeFitterRes.mPlane);
     auto result = fitter.go();
     results.push_back(result);
+
   }
 
   if (mDebug) {
     auto t1 = std::chrono::high_resolution_clock::now();
     auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
     std::cout << "finished in " << dt.count()/1e3 << " sec" << std::endl;
-
-    std::ofstream ofs("boxes.txt");
-    for (int i = 0; i < (int)results.size(); ++i) {
-      auto& res = results[i];
-      for (auto& p : res.mPolygon) {
-        ofs << i << " " << p.transpose() << std::endl;
-      }
-    }
-    ofs.close();
-
-    ofs.open("hulls.txt");
-    for (int i = 0; i < (int)results.size(); ++i) {
-      auto& res = results[i];
-      for (auto& p : res.mConvexHull) {
-        ofs << i << " " << p.transpose() << std::endl;
-      }
-    }
-    ofs.close();
-
-    ofs.open("poses.txt");
-    for (int i = 0; i < (int)results.size(); ++i) {
-      auto& res = results[i];
-      auto transform = res.mPose;
-      ofs << transform.matrix() << std::endl;
-    }
-    ofs.close();
   }
 
   // ---------------- get blocks ----------------

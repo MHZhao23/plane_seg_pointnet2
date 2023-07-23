@@ -12,8 +12,12 @@ namespace planeseg {
 class PlaneSegmenter {
 public:
   struct Result {
+    std::vector<MatrixX3f> mClusters;
     std::vector<int> mLabels;
-    std::unordered_map<int,Eigen::Vector4f> mPlanes;
+    std::vector<int> clusterSizes;
+    int mClusterNum;
+
+    // std::unordered_map<int,Eigen::Vector4f> mPlanes;
   };
 
 public:

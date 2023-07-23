@@ -12,18 +12,18 @@ class RansacGeneric {
 public:
   struct Result {
     bool mSuccess;
-    typename Problem::Solution mSolution;
+    Eigen::Vector4f mPlane;
     std::vector<int> mInliers;
     int mNumIterations;
   };
 
 public:
   RansacGeneric() {
-    setMaximumIterations(5000);
+    // setMaximumIterations(5000);
     setSkippedIterationFactor(1);
     setGoodSolutionProbability(1-1e-8);
     setRefineUsingInliers(false);
-    setMaximumError(-1);
+    // setMaximumError(-1);
   }
 
   virtual ~RansacGeneric() {}
@@ -80,10 +80,10 @@ public:
                                      allIndices.begin() + sampleSize);
 
       // compute solution on minimal set
-      typename Problem::Solution solution = iProblem.estimate(sampleIndices);
+      Eigen::Vector4f planeSol = iProblem.estimate(sampleIndices);
 
       // compute errors over all data points
-      std::vector<double> errors2 = iProblem.computeSquaredErrors(solution);
+      std::vector<double> errors2 = iProblem.computeSquaredErrors(planeSol);
 
       // check whether this is a valid sample
       // TODO: this should be done via a method in Problem class, but would
@@ -120,7 +120,7 @@ public:
       if (score > bestScore) {
         bestScore = score;
         result.mInliers = inliers;
-        result.mSolution = solution;
+        result.mPlane = planeSol;
         success = true;
         double inlierProbability = double(inliers.size()) / n;
         double anyOutlierProbability = 1 - pow(inlierProbability,sampleSize);
@@ -129,6 +129,8 @@ public:
         numIterationsNeeded =
           log(1-mGoodSolutionProbability) / log(anyOutlierProbability);
       }
+      // std::cout << "\niteration: " << iterationCount << "\tscore: " << score << "\tpoints num: " << iProblem.getNumDataPoints() << "\tplane solution: " << planeSol << std::flush;
+      // std::cout << "\nIndices: " << allIndices[0] << ", " << allIndices[1] << ", " << allIndices[2] << ", " << std::endl;
 
       // bump up iteration count and terminate if it exceeds hard max
       ++iterationCount;
@@ -143,7 +145,7 @@ public:
 
     // refine result using all inliers if specified
     if (result.mSuccess && mRefineUsingInliers) {
-      result.mSolution = iProblem.estimate(result.mInliers);
+      result.mPlane = iProblem.estimate(result.mInliers);
     }
 
     // done

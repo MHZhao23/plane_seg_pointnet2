@@ -1,3 +1,8 @@
+# Update
+
+This package run very fast using a basic method
+Clustering by distance and normals -> RANSAC
+
 # Plane Seg ![CI](https://github.com/ori-drs/plane_seg/workflows/CI/badge.svg)
 
 [![ANYmal climbing a real staircase](https://img.youtube.com/vi/YYs4lJ9t-Xo/0.jpg)](https://www.youtube.com/watch?v=YYs4lJ9t-Xo)

@@ -86,7 +86,7 @@ class Pass{
     std::vector<double> colors_;
 
     ros::Subscriber point_cloud_sub_, grid_map_sub_, pose_sub_;
-    ros::Publisher received_cloud_pub_, hull_cloud_pub_, hull_markers_pub_, look_pose_pub_, hull_marker_array_pub_;
+    ros::Publisher filtted_cloud_pub_, received_cloud_pub_, hull_cloud_pub_, hull_markers_pub_, look_pose_pub_, hull_marker_array_pub_;
 
     std::string fixed_frame_ = "odom";  // Frame in which all results are published. "odom" for backwards-compatibility. Likely should be "map".
 
@@ -100,12 +100,13 @@ Pass::Pass(ros::NodeHandle node_):
     node_(node_),
     tfBuffer_(ros::Duration(5.0)),
     tfListener_(tfBuffer_) {
-  grid_map_sub_ = node_.subscribe("/os_sensor", 100,
-                                    &Pass::elevationMapCallback, this);
-  point_cloud_sub_ = node_.subscribe("/ouster/points2", 100,
-                                    &Pass::pointCloudCallback, this);
+  // grid_map_sub_ = node_.subscribe("/os_sensor", 100,
+  //                                   &Pass::elevationMapCallback, this);
+  // point_cloud_sub_ = node_.subscribe("/ouster/points2", 100,
+  //                                   &Pass::pointCloudCallback, this);
 
   received_cloud_pub_ = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg/received_cloud", 10);
+  filtted_cloud_pub_ = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg/filtted_cloud", 10);
   hull_cloud_pub_ = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg/hull_cloud", 10);
   hull_markers_pub_ = node_.advertise<visualization_msgs::Marker>("/plane_seg/hull_markers", 10);
   hull_marker_array_pub_ = node_.advertise<visualization_msgs::MarkerArray>("/plane_seg/hull_marker_array", 10);
@@ -294,10 +295,12 @@ void Pass::processCloud(const std::string& cloudFrame, planeseg::LabeledCloud::P
   auto tic = std::chrono::high_resolution_clock::now();
 #endif
 
+  std::cout << "incloud structure: " << inCloud->width << ", " << inCloud->height << std::endl;
   planeseg::BlockFitter fitter;
   fitter.setSensorPose(origin, lookDir);
   fitter.setCloud(inCloud);
   fitter.setDebug(true); // MFALLON modification
+  fitter.setVisual(true);
   fitter.setRemoveGround(false); // MFALLON modification from default
 
   // this was 5 for LIDAR. changing to 10 really improved elevation map segmentation
@@ -335,6 +338,15 @@ void Pass::processCloud(const std::string& cloudFrame, planeseg::LabeledCloud::P
     output.header.stamp = ros::Time(0, 0);
     output.header.frame_id = cloudFrame;
     received_cloud_pub_.publish(output);
+  }
+
+  if (filtted_cloud_pub_.getNumSubscribers() > 0) {
+    // This message is published correctly
+    sensor_msgs::PointCloud2 output;
+    pcl::toROSMsg(*result_.filttedCloud, output);
+    output.header.stamp = ros::Time(0, 0);
+    output.header.frame_id = cloudFrame;
+    filtted_cloud_pub_.publish(output);
   }
 
   publishResult(cloudFrame);
@@ -641,8 +653,10 @@ int main( int argc, char** argv ){
   }
 
   ROS_INFO_STREAM("Waiting for ROS messages");
+  ros::Subscriber grid_map_sub_ = nh.subscribe("/os_sensor", 100,
+                                    &Pass::elevationMapCallback, &pass_pt);
   ros::Subscriber point_cloud_sub_ = nh.subscribe ("/ouster/points", 100,
-                                    &Pass::pointCloudCallback, &pass_pt); // new
+                                    &Pass::pointCloudCallback, &pass_pt);
   ros::spin();
 
   return 1;

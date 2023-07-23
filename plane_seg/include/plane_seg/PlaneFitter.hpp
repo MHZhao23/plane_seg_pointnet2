@@ -11,7 +11,6 @@ public:
     Eigen::Vector4f mPlane;
     std::vector<int> mInliers;
     Eigen::Vector3f mCenterPoint;
-    float mCurvature;
   };
 
 public:
@@ -26,11 +25,7 @@ public:
   void setNormalPrior(const Eigen::Vector3f& iNormal,
                       const float iMaxAngleDeviation);
 
-  Result go(const std::vector<Eigen::Vector3f>& iPoints) const;
-
-protected:
-  template<typename T>
-  Result solve(const std::vector<Eigen::Vector3f>& iPoints) const;
+  Result go(const MatrixX3f& iPoints) const;
 
 protected:
   Eigen::Vector3f mCenterPoint;

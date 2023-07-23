@@ -23,32 +23,31 @@ include_directories(
 # create library
 add_library(${PROJECT_NAME} SHARED
   src/PlaneFitter.cpp
-  src/RobustNormalEstimator.cpp
   src/IncrementalPlaneEstimator.cpp
   src/PlaneSegmenter.cpp
   src/RectangleFitter.cpp
   src/BlockFitter.cpp
 )
 add_dependencies(plane_seg ${catkin_EXPORTED_TARGETS})
-target_link_libraries(plane_seg PUBLIC ${catkin_LIBRARIES})
+target_link_libraries(plane_seg PUBLIC ${catkin_LIBRARIES} pcl_visualization)
 
 
 # standalone lcm-based block fitter
 set(APP_NAME block_fitter)
 add_executable(${APP_NAME} src/block-fitter.cpp)
-target_link_libraries(${APP_NAME} boost_system ${catkin_LIBRARIES})
+target_link_libraries(${APP_NAME} boost_system ${catkin_LIBRARIES} pcl_visualization)
 
 
-# test program
-set(APP_NAME plane_seg_test)
-add_executable(${APP_NAME} src/${APP_NAME}.cpp)
-target_link_libraries(${APP_NAME} boost_system ${catkin_LIBRARIES} plane_seg)
+# # test program
+# set(APP_NAME plane_seg_test)
+# add_executable(${APP_NAME} src/${APP_NAME}.cpp)
+# target_link_libraries(${APP_NAME} boost_system ${catkin_LIBRARIES} plane_seg pcl_visualization)
 
 
-# fit single block
-set(APP_NAME plane_seg_test2)
-add_executable(${APP_NAME} src/plane_seg_test2.cpp)
-target_link_libraries(${APP_NAME} boost_system ${catkin_LIBRARIES} plane_seg)
+# # fit single block
+# set(APP_NAME plane_seg_test2)
+# add_executable(${APP_NAME} src/plane_seg_test2.cpp)
+# target_link_libraries(${APP_NAME} boost_system ${catkin_LIBRARIES} plane_seg pcl_visualization)
 
 
 # install

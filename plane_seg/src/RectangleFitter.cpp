@@ -50,6 +50,8 @@ setData(const MatrixX3f& iPoints, const Eigen::Vector4f& iPlane) {
 
 RectangleFitter::Result
 RectangleFitter::go() {
+  int nPoints = mPoints.rows();
+
   // project points onto plane
   Eigen::VectorXf distances = (mPoints*mPlane.head<3>()).array() + mPlane[3];
   MatrixX3f points = mPoints - distances*mPlane.head<3>().transpose();

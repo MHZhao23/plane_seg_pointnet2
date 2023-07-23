@@ -23,6 +23,7 @@ public:
     std::vector<Block> mBlocks;
     Eigen::Vector4f mGroundPlane;
     std::vector<Eigen::Vector3f> mGroundPolygon;
+    LabeledCloud::Ptr filttedCloud; // to view the filtted cloud
   };
 
 public:
@@ -40,9 +41,12 @@ public:
   void setMaxRange(const float iRange);
   void setMaxAngleFromHorizontal(const float iDegrees);
   void setMaxAngleOfPlaneSegmenter(const float iDegrees);
+  void setMaxIterations(const int iIters);
+  void setMaxEstimationError(const float iDist);
   void setAreaThresholds(const float iMin, const float iMax);
   void setRectangleFitAlgorithm(const RectangleFitAlgorithm iAlgo);
   void setDebug(const bool iVal);
+  void setVisual(const bool iVal);
   void setCloud(const LabeledCloud::Ptr& iCloud);
 
   Result go();
@@ -60,11 +64,14 @@ protected:
   float mMaxRange;
   float mMaxAngleFromHorizontal;
   float mMaxAngleOfPlaneSegmenter;
+  float mMaxEstimationError;
+  int mMaxIterations;
   float mAreaThreshMin;
   float mAreaThreshMax;
   RectangleFitAlgorithm mRectangleFitAlgorithm;
   LabeledCloud::Ptr mCloud;
   bool mDebug;
+  bool mVisual;
 };
 
 }

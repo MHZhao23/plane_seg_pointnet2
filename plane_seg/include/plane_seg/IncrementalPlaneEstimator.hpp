@@ -6,41 +6,23 @@
 
 namespace planeseg {
 
-class IncrementalPlaneEstimator {
+class pointsClustering {
 protected:
-  std::vector<Eigen::Vector3f> mPoints;
-  Eigen::Vector3d mSum;
-  Eigen::Matrix3d mSumSquared;
+  // std::vector<Eigen::Vector3f> mPoints;
+  // std::vector<Eigen::Vector3f> mNormals;
+  Eigen::Vector3f sumNormal;
   int mCount;
 
-protected:
-  Eigen::Vector4f getPlane(const Eigen::Vector3d& iSum,
-                           const Eigen::Matrix3d& iSumSquared,
-                           const double iCount);
-
-  inline float computeError(const Eigen::Vector4f& iPlane,
-                            const Eigen::Vector3f& iPoint) {
-    float e = iPoint.dot(iPlane.head<3>()) + iPlane[3];
-    return e*e;
-  }
-
-
 public:
-  IncrementalPlaneEstimator();
+  pointsClustering();
 
   void reset();
   int getNumPoints() const;
-  void addPoint(const Eigen::Vector3f& iPoint);
-
-  std::vector<float>
-  computeErrors(const Eigen::Vector4f& iPlane,
-                const std::vector<Eigen::Vector3f>& iPoints);
-
-  bool tryPoint(const Eigen::Vector3f& iPoint, const float iMaxError);
-  bool tryPoint(const Eigen::Vector3f& iPoint, const Eigen::Vector3f& iNormal,
-                const float iMaxError, const float iMaxAngle);
-
-  Eigen::Vector4f getCurrentPlane();
+  void addPoint(const Eigen::Vector3f& iNormal);
+  bool tryPoint(const Eigen::Vector3f& iNormal, const float iMaxAngle);
+  // void addPoint(const Eigen::Vector3f& iPoint, const Eigen::Vector3f& iNormal);
+  // bool tryPoint(const Eigen::Vector3f& iPoint, const Eigen::Vector3f& iNormal,
+  //               const float iMaxError, const float iMaxAngle);
 };
 
 }
