@@ -15,6 +15,10 @@ catkin_package(
   CATKIN_DEPENDS pcl_ros
 )
 
+catkin_install_python(PROGRAMS src/Inferrence.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
 include_directories(
   include
   ${catkin_INCLUDE_DIRS}
@@ -26,6 +30,8 @@ add_library(${PROJECT_NAME} SHARED
   src/IncrementalPlaneEstimator.cpp
   src/PlaneSegmenter.cpp
   src/RectangleFitter.cpp
+  src/Preprocessing.cpp
+  src/Fitting.cpp
   src/BlockFitter.cpp
 )
 add_dependencies(plane_seg ${catkin_EXPORTED_TARGETS})

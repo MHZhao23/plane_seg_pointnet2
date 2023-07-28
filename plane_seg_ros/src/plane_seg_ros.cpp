@@ -41,6 +41,8 @@
 #include <tf2_eigen/tf2_eigen.h>
 
 #include "plane_seg/BlockFitter.hpp"
+#include "plane_seg/Preprocessing.hpp"
+#include "plane_seg/Fitting.hpp"
 
 // #define WITH_TIMING
 
@@ -86,7 +88,7 @@ class Pass{
     std::vector<double> colors_;
 
     ros::Subscriber point_cloud_sub_, grid_map_sub_, pose_sub_;
-    ros::Publisher filtted_cloud_pub_, received_cloud_pub_, hull_cloud_pub_, hull_markers_pub_, look_pose_pub_, hull_marker_array_pub_;
+    ros::Publisher preprocessed_pub, filtted_cloud_pub_, received_cloud_pub_, hull_cloud_pub_, hull_markers_pub_, look_pose_pub_, hull_marker_array_pub_;
 
     std::string fixed_frame_ = "odom";  // Frame in which all results are published. "odom" for backwards-compatibility. Likely should be "map".
 
@@ -94,6 +96,7 @@ class Pass{
     tf2_ros::TransformListener tfListener_;
 
     planeseg::BlockFitter::Result result_;
+    planeseg::Fitting::Result fresult_;
 };
 
 Pass::Pass(ros::NodeHandle node_):
@@ -105,6 +108,7 @@ Pass::Pass(ros::NodeHandle node_):
   // point_cloud_sub_ = node_.subscribe("/ouster/points2", 100,
   //                                   &Pass::pointCloudCallback, this);
 
+  preprocessed_pub = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg/processed_cloud", 10);
   received_cloud_pub_ = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg/received_cloud", 10);
   filtted_cloud_pub_ = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg/filtted_cloud", 10);
   hull_cloud_pub_ = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg/hull_cloud", 10);
@@ -296,6 +300,30 @@ void Pass::processCloud(const std::string& cloudFrame, planeseg::LabeledCloud::P
 #endif
 
   std::cout << "incloud structure: " << inCloud->width << ", " << inCloud->height << std::endl;
+  planeseg::Preprocessing preprossesor;
+  preprossesor.setSensorPose(origin, lookDir);
+  preprossesor.setFrame(cloudFrame);
+  preprossesor.setCloud(inCloud);
+  preprossesor.setDebug(true);
+  preprossesor.setVisual(true);
+  planeseg::LabeledCloud::Ptr result_cloud = preprossesor.go();
+
+  if (preprocessed_pub.getNumSubscribers() > 0) {
+    sensor_msgs::PointCloud2 output;
+    pcl::toROSMsg(*result_cloud, output);
+    output.header.stamp = ros::Time(0, 0);
+    output.header.frame_id = cloudFrame;
+    preprocessed_pub.publish(output);
+  }
+
+  planeseg::Fitting cfitter;
+  cfitter.setCloud(result_cloud);
+  cfitter.setFrame(cloudFrame);
+  cfitter.setCloud(inCloud);
+  cfitter.setDebug(true);
+  cfitter.setVisual(true);
+  fresult_ = cfitter.go();
+
   planeseg::BlockFitter fitter;
   fitter.setSensorPose(origin, lookDir);
   fitter.setCloud(inCloud);
@@ -641,9 +669,9 @@ int main( int argc, char** argv ){
   if (run_test_program){
     std::cout << "Running test examples\n";
     app->processFromFile(0);
-    app->processFromFile(1);
-    app->processFromFile(2);
-    app->processFromFile(3);
+    // app->processFromFile(1);
+    // app->processFromFile(2);
+    // app->processFromFile(3);
     // RACE examples don't work well
     //app->processFromFile(4);
     //app->processFromFile(5);
