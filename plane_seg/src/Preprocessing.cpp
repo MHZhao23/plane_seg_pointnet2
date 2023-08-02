@@ -92,7 +92,8 @@ setVisual(const bool iVal) {
 LabeledCloud::Ptr Preprocessing::
 go() {
     if (mDebug) {
-        std::cout << "******* begin pre-processing *******" << std::endl;
+        std::cout << "\n\n******* begin pre-processing *******" << std::endl;
+        std::cout << "incloud structure: " << mCloud->width << ", " << mCloud->height << std::endl;
     }
 
     // ros::NodeHandle node_;
@@ -125,17 +126,18 @@ go() {
     voxelGrid.filter(*cloud);
     for (int i = 0; i < (int)cloud->size(); ++i) cloud->points[i].label = i;
 
-    // // crop 3m
-    // pcl::CropBox<pcl::PointXYZL> cropBox;
-    // cropBox.setInputCloud(cloud);
-    // Eigen::Vector4f max_pt;
-    // Eigen::Vector4f min_pt;
-    // max_pt << 3, 3, 3, 1;
-    // min_pt << -3, -3, -3, 1;
-    // cropBox.setMax(max_pt);
-    // cropBox.setMin(min_pt);
-    // // cropBox.setKeepOrganized(true); // some points are filled by NaN
-    // cropBox.filter(*cloud);
+    // crop 3m
+    int crop_dim = 2;
+    pcl::CropBox<pcl::PointXYZL> cropBox;
+    cropBox.setInputCloud(cloud);
+    Eigen::Vector4f max_pt;
+    Eigen::Vector4f min_pt;
+    max_pt << crop_dim, crop_dim, crop_dim, 1;
+    min_pt << -crop_dim, -crop_dim, -crop_dim, 1;
+    cropBox.setMax(max_pt);
+    cropBox.setMin(min_pt);
+    // cropBox.setKeepOrganized(true); // some points are filled by NaN
+    cropBox.filter(*cloud);
 
     std::cout << "voxelized cloud structure: " << cloud->width << ", " << cloud->height << std::endl;
 

@@ -95,38 +95,54 @@ setVisual(const bool iVal) {
 Fitting::Result Fitting::
 go() {
   if (mDebug) {
-    std::cout << "******* begin plane fitting *******" << std::endl;
+    std::cout << "\n\n******* begin plane segmentation *******" << std::endl;
+    std::cout << "Subscribed point cloud: " << mCloud->size() << std::endl;
   }
 
   Result result;
   result.mSuccess = false;
 
-    // ---------------- normal estimation ----------------
-    auto t0 = std::chrono::high_resolution_clock::now();
-    if (mDebug) {
-        std::cout << "computing normals..." << std::flush;
-    }
+  // ---------------- normal estimation ----------------
+  auto t0 = std::chrono::high_resolution_clock::now();
+  if (mDebug) {
+      std::cout << "computing normals..." << std::flush;
+  }
 
-    // normal estimation by PCL library
-    NormalCloud::Ptr normals(new NormalCloud());
-    pcl::NormalEstimationOMP<pcl::PointXYZL, pcl::Normal> norm_est;
-    norm_est.setKSearch (25); // best planes: 10 best clustering: 25
-    norm_est.setInputCloud (mCloud);
-    norm_est.compute (*normals);
+  // normal estimation by PCL library
+  NormalCloud::Ptr normals(new NormalCloud());
+  pcl::NormalEstimationOMP<pcl::PointXYZL, pcl::Normal> norm_est;
+  norm_est.setKSearch (25); // best planes: 10 best clustering: 25
+  norm_est.setInputCloud (mCloud);
+  norm_est.compute (*normals);
 
-    for (int i = 0; i < (int)normals->size(); ++i) {
-        if (normals->points[i].normal_z<0) {
-            normals->points[i].normal_x = -normals->points[i].normal_x;
-            normals->points[i].normal_y = -normals->points[i].normal_y;
-            normals->points[i].normal_z = -normals->points[i].normal_z;
-        }
-    }
+  for (int i = 0; i < (int)normals->size(); ++i) {
+      if (normals->points[i].normal_z<0) {
+          normals->points[i].normal_x = -normals->points[i].normal_x;
+          normals->points[i].normal_y = -normals->points[i].normal_y;
+          normals->points[i].normal_z = -normals->points[i].normal_z;
+      }
+  }
 
-    if (mDebug) {
-        auto t1 = std::chrono::high_resolution_clock::now();
-        auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
-        std::cout << "finished in " << dt.count()/1e3 << " sec" << std::endl;
-    }
+  if (mDebug) {
+      auto t1 = std::chrono::high_resolution_clock::now();
+      auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
+      std::cout << "finished in " << dt.count()/1e3 << " sec" << std::endl;
+  }
+
+  // // visualizer
+  // pcl::visualization::PCLVisualizer::Ptr viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
+  // viewer->setBackgroundColor (0, 0, 0);
+  // pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZL> rgb(mCloud);
+  // viewer->addPointCloud<pcl::PointXYZL> (mCloud, rgb, "sample cloud");
+  // viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "sample cloud");
+  // viewer->addPointCloudNormals<pcl::PointXYZL, pcl::Normal> (mCloud, normals, 10, 0.05, "normals");
+  // viewer->addCoordinateSystem (1.0);
+  // viewer->initCameraParameters ();
+  // while (!viewer->wasStopped ())
+  // {
+  //   viewer->spinOnce (100);
+  //   std::this_thread::sleep_for(100ms);
+  // }
 
   // ---------------- clustering by distance and curvature ----------------
   if (mDebug) {

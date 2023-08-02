@@ -23,7 +23,6 @@ public:
     std::vector<Block> mBlocks;
     Eigen::Vector4f mGroundPlane;
     std::vector<Eigen::Vector3f> mGroundPolygon;
-    LabeledCloud::Ptr filttedCloud; // to view the filtted cloud
   };
 
 public:

@@ -333,7 +333,7 @@ go() {
   if (mVisual) {
     // visualize cluster results
     std::vector< pcl::PointCloud<pcl::PointXYZ>::Ptr > cloud_ptrs;
-    for (int j = 0; j < segmenterResult.mClusterNum; ++j) {
+    for (int j = 0; j < (int)segmenterResult.mClusterNum; ++j) {
         pcl::PointCloud<pcl::PointXYZ> clusterCloud;
         for (int i = 0; i < (int)cloud->size(); ++i){
           if (segmenterResult.mLabels[i] == j) {
@@ -383,7 +383,7 @@ go() {
         0.5, 0.5, 1.0};
 
     pcl::PointCloud<pcl::PointXYZRGB> combined_cloud;
-    for (int i = 0; i < cloud_ptrs.size(); ++i) {
+    for (int i = 0; i < (int)cloud_ptrs.size(); ++i) {
       pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_rgb (new pcl::PointCloud<pcl::PointXYZRGB>);
       pcl::copyPointCloud(*cloud_ptrs[i], *cloud_rgb);
 
@@ -391,7 +391,7 @@ go() {
       double r = colors_[nColor*3]*255.0;
       double g = colors_[nColor*3+1]*255.0;
       double b = colors_[nColor*3+2]*255.0;
-      for (int j = 0; j < cloud_rgb->points.size (); j++){
+      for (int j = 0; j < (int)cloud_rgb->points.size (); j++){
           cloud_rgb->points[j].r = r;
           cloud_rgb->points[j].g = g;
           cloud_rgb->points[j].b = b;
@@ -415,7 +415,7 @@ go() {
 
   std::vector<RectangleFitter::Result> results;
   results.reserve(segmenterResult.mClusterNum);
-  for (int i = 0; i < segmenterResult.mClusterNum; ++i) {
+  for (int i = 0; i < (int)segmenterResult.mClusterNum; ++i) {
     // std::cout << "\ncluster " << i << " with size of " << segmenterResult.mClusters[i].size() << std::endl;
     PlaneFitter planeFitter;
     planeFitter.setMaxIterations(mMaxIterations);

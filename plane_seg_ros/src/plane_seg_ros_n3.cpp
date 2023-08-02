@@ -3,7 +3,6 @@
 #include <ros/console.h>
 #include <ros/package.h>
 
-
 #include <eigen_conversions/eigen_msg.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/io/pcd_io.h>
@@ -70,32 +69,28 @@ class Pass{
     Pass(ros::NodeHandle node_);
     ~Pass() = default;
 
-    void elevationMapCallback(const grid_map_msgs::GridMap& msg);
-    void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr &msg);
+    void labelledPointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr &msg);
 
-    void processCloud(const std::string& cloudFrame, planeseg::LabeledCloud::Ptr& inCloud, Eigen::Vector3f origin, Eigen::Vector3f lookDir);
-    void processFromFile(int test_example);
+    void preProcessCloud(const std::string& cloudFrame, planeseg::LabeledCloud::Ptr& inCloud, Eigen::Vector3f origin, Eigen::Vector3f lookDir);
+    void fittingPlane(const std::string& cloudFrame, planeseg::LabeledCloud::Ptr& inCloud, Eigen::Vector3f origin, Eigen::Vector3f lookDir);
 
     void publishHullsAsCloud(const std::string& cloud_frame, std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> cloud_ptrs, int secs, int nsecs);
-
     void publishHullsAsMarkers(const std::string& cloud_frame, std::vector< pcl::PointCloud<pcl::PointXYZ>::Ptr > cloud_ptrs, int secs, int nsecs);
     void publishHullsAsMarkerArray(const std::string& cloud_frame, std::vector< pcl::PointCloud<pcl::PointXYZ>::Ptr > cloud_ptrs, int secs, int nsecs);
-    void printResultAsJson();
     void publishResult(const std::string& cloud_frame);
 
   private:
     ros::NodeHandle node_;
     std::vector<double> colors_;
 
-    ros::Subscriber point_cloud_sub_, grid_map_sub_, pose_sub_;
-    ros::Publisher preprocessed_pub, filtted_cloud_pub_, received_cloud_pub_, hull_cloud_pub_, hull_markers_pub_, look_pose_pub_, hull_marker_array_pub_;
+    ros::Subscriber point_cloud_sub_, labelled_cloud_sub_;
+    ros::Publisher preprocessed_cloud_pub, received_cloud_pub_, hull_cloud_pub_, hull_markers_pub_, look_pose_pub_, hull_marker_array_pub_;
 
     std::string fixed_frame_ = "odom";  // Frame in which all results are published. "odom" for backwards-compatibility. Likely should be "map".
 
     tf2_ros::Buffer tfBuffer_;
     tf2_ros::TransformListener tfListener_;
 
-    planeseg::BlockFitter::Result result_;
     planeseg::Fitting::Result fresult_;
 };
 
@@ -103,18 +98,17 @@ Pass::Pass(ros::NodeHandle node_):
     node_(node_),
     tfBuffer_(ros::Duration(5.0)),
     tfListener_(tfBuffer_) {
-  // grid_map_sub_ = node_.subscribe("/os_sensor", 100,
-  //                                   &Pass::elevationMapCallback, this);
-  // point_cloud_sub_ = node_.subscribe("/ouster/points2", 100,
-  //                                   &Pass::pointCloudCallback, this);
 
-  preprocessed_pub = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg/processed_cloud", 10);
-  received_cloud_pub_ = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg/received_cloud", 10);
-  filtted_cloud_pub_ = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg/filtted_cloud", 10);
-  hull_cloud_pub_ = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg/hull_cloud", 10);
-  hull_markers_pub_ = node_.advertise<visualization_msgs::Marker>("/plane_seg/hull_markers", 10);
-  hull_marker_array_pub_ = node_.advertise<visualization_msgs::MarkerArray>("/plane_seg/hull_marker_array", 10);
-  look_pose_pub_ = node_.advertise<geometry_msgs::PoseStamped>("/plane_seg/look_pose", 10);
+  // // subscribe the labelled point cloud
+  labelled_cloud_sub_ = node_.subscribe("/plane_seg_n2/labelled_cloud", 10,
+                                        &Pass::labelledPointCloudCallback, this);
+                                        
+  // publishing the results
+  received_cloud_pub_ = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg_n3/received_cloud", 10);
+  hull_cloud_pub_ = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg_n3/hull_cloud", 10);
+  hull_markers_pub_ = node_.advertise<visualization_msgs::Marker>("/plane_seg_n3/hull_markers", 10);
+  hull_marker_array_pub_ = node_.advertise<visualization_msgs::MarkerArray>("/plane_seg_n3/hull_marker_array", 10);
+  look_pose_pub_ = node_.advertise<geometry_msgs::PoseStamped>("/plane_seg_n3/look_pose", 10);
 
   colors_ = {
        51/255.0, 160/255.0, 44/255.0,  //0
@@ -174,46 +168,7 @@ Eigen::Vector3f convertRobotPoseToSensorLookDir(Eigen::Isometry3d robot_pose){
 }
 
 
-void Pass::elevationMapCallback(const grid_map_msgs::GridMap& msg){
-  //std::cout << "got grid map / ev map\n";
-
-  // convert message to GridMap, to PointCloud to LabeledCloud
-  grid_map::GridMap map;
-  grid_map::GridMapRosConverter::fromMessage(msg, map);
-  sensor_msgs::PointCloud2 pointCloud;
-  grid_map::GridMapRosConverter::toPointCloud(map, "elevation", pointCloud);
-  planeseg::LabeledCloud::Ptr inCloud(new planeseg::LabeledCloud());
-  pcl::fromROSMsg(pointCloud,*inCloud);
-
-  // Expressed in is first argument
-  if (tfBuffer_.canTransform(fixed_frame_, map.getFrameId(), msg.info.header.stamp, ros::Duration(0.02)))
-  {
-    // Look up transform of elevation map frame when it was captured
-    geometry_msgs::TransformStamped fixed_frame_to_elevation_map_frame_tf;
-    Eigen::Isometry3d map_T_elevation_map;
-
-    fixed_frame_to_elevation_map_frame_tf = tfBuffer_.lookupTransform(fixed_frame_, map.getFrameId(), msg.info.header.stamp, ros::Duration(0.02));
-    map_T_elevation_map = tf2::transformToEigen(fixed_frame_to_elevation_map_frame_tf);
-  
-    Eigen::Vector3f origin, lookDir;
-    origin << map_T_elevation_map.translation().cast<float>();
-    lookDir = convertRobotPoseToSensorLookDir(map_T_elevation_map);
-
-    // ROS_INFO_STREAM("Received new elevation map & looked up transform -- processing.");
-    processCloud(map.getFrameId(), inCloud, origin, lookDir);
-  }
-  else
-  {
-    ROS_WARN_STREAM("Cannot look up transform from '" << map.getFrameId() << "' to fixed frame ('" << fixed_frame_ <<"'). Skipping elevation map.");
-  }
-}
-
-
-// process a point cloud 
-// This method is mostly for testing
-// To transmit a static point cloud:
-// rosrun pcl_ros pcd_to_pointcloud 06.pcd   _frame_id:=/odom /cloud_pcd:=/plane_seg/point_cloud_in
-void Pass::pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr &msg){
+void Pass::labelledPointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr &msg){
   planeseg::LabeledCloud::Ptr inCloud(new planeseg::LabeledCloud());
   pcl::fromROSMsg(*msg,*inCloud);
 
@@ -234,108 +189,23 @@ void Pass::pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr &msg){
   origin << map_T_pointcloud.translation().cast<float>();
   lookDir = convertRobotPoseToSensorLookDir(map_T_pointcloud);
 
-  processCloud(msg->header.frame_id, inCloud, origin, lookDir);
+  fittingPlane(msg->header.frame_id, inCloud, origin, lookDir);
 }
 
 
-void Pass::processFromFile(int test_example){
-
-  // to allow ros connections to register
-  sleep(2);
-
-  std::string inFile;
-  std::string home_dir = ros::package::getPath("plane_seg_ros");
-  Eigen::Vector3f origin, lookDir;
-  if (test_example == 0){ // LIDAR example from Atlas during DRC
-    inFile = home_dir + "/data/terrain/tilted-steps.pcd";
-    origin <<0.248091, 0.012443, 1.806473;
-    lookDir <<0.837001, 0.019831, -0.546842;
-  }else if (test_example == 1){ // LIDAR example from Atlas during DRC
-    inFile = home_dir + "/data/terrain/terrain_med.pcd";
-    origin << -0.028862, -0.007466, 0.087855;
-    lookDir << 0.999890, -0.005120, -0.013947;
-  }else if (test_example == 2){ // LIDAR example from Atlas during DRC
-    inFile = home_dir + "/data/terrain/terrain_close_rect.pcd";
-    origin << -0.028775, -0.005776, 0.087898;
-    lookDir << 0.999956, -0.005003, 0.007958;
-  }else if (test_example == 3){ // RGBD (Realsense D435) example from ANYmal
-    inFile = home_dir + "/data/terrain/anymal/ori_entrance_stair_climb/06.pcd";
-    origin << -0.028775, -0.005776, 0.987898;
-    lookDir << 0.999956, -0.005003, 0.007958;
-  }else if (test_example == 4){ // Leica map
-    inFile = home_dir + "/data/leica/race_arenas/RACE_crossplaneramps_sub1cm_cropped_meshlab_icp.ply";
-    origin << -0.028775, -0.005776, 0.987898;
-    lookDir << 0.999956, -0.005003, 0.007958;
-  }else if (test_example == 5){ // Leica map
-    inFile = home_dir + "/data/leica/race_arenas/RACE_stepfield_sub1cm_cropped_meshlab_icp.ply";
-    origin << -0.028775, -0.005776, 0.987898;
-    lookDir << 0.999956, -0.005003, 0.007958;
-  }
-
-  std::cout << "\nProcessing test example " << test_example << "\n";
-  std::cout << inFile << "\n";
-
-  std::size_t found_ply = inFile.find(".ply");
-  std::size_t found_pcd = inFile.find(".pcd");
-
-  planeseg::LabeledCloud::Ptr inCloud(new planeseg::LabeledCloud());
-  if (found_ply!=std::string::npos){
-    std::cout << "readply\n";
-    pcl::io::loadPLYFile(inFile, *inCloud);
-  }else if (found_pcd!=std::string::npos){
-    std::cout << "readpcd\n";
-    pcl::io::loadPCDFile(inFile, *inCloud);
-  }else{
-    std::cout << "extension not understood\n";
-    return;
-  }
-
-  processCloud(fixed_frame_, inCloud, origin, lookDir);
-}
-
-
-void Pass::processCloud(const std::string& cloudFrame, planeseg::LabeledCloud::Ptr& inCloud, Eigen::Vector3f origin, Eigen::Vector3f lookDir){
+void Pass::fittingPlane(const std::string& cloudFrame, planeseg::LabeledCloud::Ptr& inCloud, Eigen::Vector3f origin, Eigen::Vector3f lookDir){
 #ifdef WITH_TIMING
   auto tic = std::chrono::high_resolution_clock::now();
 #endif
 
-  std::cout << "incloud structure: " << inCloud->width << ", " << inCloud->height << std::endl;
-  planeseg::Preprocessing preprossesor;
-  preprossesor.setSensorPose(origin, lookDir);
-  preprossesor.setFrame(cloudFrame);
-  preprossesor.setCloud(inCloud);
-  preprossesor.setDebug(true);
-  preprossesor.setVisual(true);
-  planeseg::LabeledCloud::Ptr result_cloud = preprossesor.go();
-
-  if (preprocessed_pub.getNumSubscribers() > 0) {
-    sensor_msgs::PointCloud2 output;
-    pcl::toROSMsg(*result_cloud, output);
-    output.header.stamp = ros::Time(0, 0);
-    output.header.frame_id = cloudFrame;
-    preprocessed_pub.publish(output);
-  }
-
   planeseg::Fitting cfitter;
-  cfitter.setCloud(result_cloud);
   cfitter.setFrame(cloudFrame);
   cfitter.setCloud(inCloud);
+  cfitter.setMaxAngleOfPlaneSegmenter(10);
   cfitter.setDebug(true);
-  cfitter.setVisual(true);
+  cfitter.setVisual(false);
   fresult_ = cfitter.go();
 
-  planeseg::BlockFitter fitter;
-  fitter.setSensorPose(origin, lookDir);
-  fitter.setCloud(inCloud);
-  fitter.setDebug(true); // MFALLON modification
-  fitter.setVisual(true);
-  fitter.setRemoveGround(false); // MFALLON modification from default
-
-  // this was 5 for LIDAR. changing to 10 really improved elevation map segmentation
-  // I think its because the RGB-D map can be curved
-  fitter.setMaxAngleOfPlaneSegmenter(10);
-
-  result_ = fitter.go();
 #ifdef WITH_TIMING
   auto toc_1 = std::chrono::high_resolution_clock::now();
 #endif
@@ -368,63 +238,23 @@ void Pass::processCloud(const std::string& cloudFrame, planeseg::LabeledCloud::P
     received_cloud_pub_.publish(output);
   }
 
-  if (filtted_cloud_pub_.getNumSubscribers() > 0) {
-    // This message is published correctly
-    sensor_msgs::PointCloud2 output;
-    pcl::toROSMsg(*result_.filttedCloud, output);
-    output.header.stamp = ros::Time(0, 0);
-    output.header.frame_id = cloudFrame;
-    filtted_cloud_pub_.publish(output);
-  }
-
   publishResult(cloudFrame);
 
 #ifdef WITH_TIMING
   auto toc_2 = std::chrono::high_resolution_clock::now();
 
-  std::cout << "[BlockFitter] took " << 1e-3 * std::chrono::duration_cast<std::chrono::microseconds>(toc_1 - tic).count() << "ms" << std::endl;
+  // std::cout << "[BlockFitter] took " << 1e-3 * std::chrono::duration_cast<std::chrono::microseconds>(toc_1 - tic).count() << "ms" << std::endl;
   // std::cout << "[Publishing] took " << 1e-3 * std::chrono::duration_cast<std::chrono::microseconds>(toc_2 - toc_1).count() << "ms" << std::endl;
 #endif
-}
-
-
-void Pass::printResultAsJson(){
-  std::string json;
-
-  for (int i = 0; i < (int)result_.mBlocks.size(); ++i) {
-    const auto& block = result_.mBlocks[i];
-    std::string dimensionString = vecToStr(block.mSize);
-    std::string positionString = vecToStr(block.mPose.translation());
-    std::string quaternionString = rotToStr(block.mPose.rotation());
-    Eigen::Vector3f color(0.5, 0.4, 0.5);
-    std::string colorString = vecToStr(color);
-    float alpha = 1.0;
-    std::string uuid = "0_" + std::to_string(i+1);
-    
-    json += "    \"" + uuid + "\": {\n";
-    json += "      \"classname\": \"BoxAffordanceItem\",\n";
-    json += "      \"pose\": [[" + positionString + "], [" +
-      quaternionString + "]],\n";
-    json += "      \"uuid\": \"" + uuid + "\",\n";
-    json += "      \"Dimensions\": [" + dimensionString + "],\n";
-    json += "      \"Color\": [" + colorString + "],\n";
-    json += "      \"Alpha\": " + std::to_string(alpha) + ",\n";
-    json += "      \"Name\": \" mNamePrefix " +
-      std::to_string(i) + "\"\n";
-    json += "    },\n";
-
-  }
-
-  std::cout << json << "\n";
 }
 
 
 void Pass::publishResult(const std::string& cloud_frame){
   // convert result to a vector of point clouds
   std::vector< pcl::PointCloud<pcl::PointXYZ>::Ptr > cloud_ptrs;
-  for (size_t i=0; i<result_.mBlocks.size(); ++i){
+  for (size_t i=0; i<(int)fresult_.mBlocks.size(); ++i){
     pcl::PointCloud<pcl::PointXYZ> cloud;
-    const auto& block = result_.mBlocks[i];
+    const auto& block = fresult_.mBlocks[i];
     cloud.points.reserve(block.mHull.size());
 
     if (block.mHull.size() == 0) continue;
@@ -445,11 +275,6 @@ void Pass::publishResult(const std::string& cloud_frame){
   if (hull_cloud_pub_.getNumSubscribers() > 0) publishHullsAsCloud(cloud_frame, cloud_ptrs, 0, 0);
   if (hull_markers_pub_.getNumSubscribers() > 0) publishHullsAsMarkers(cloud_frame, cloud_ptrs, 0, 0);
   if (hull_marker_array_pub_.getNumSubscribers() > 0) publishHullsAsMarkerArray(cloud_frame, cloud_ptrs, 0, 0);
-
-  //pcl::PCDWriter pcd_writer_;
-  //pcd_writer_.write<pcl::PointXYZ> ("/home/mfallon/out.pcd", cloud, false);
-  //std::cout << "blocks: " << result_.mBlocks.size() << " blocks\n";
-  //std::cout << "cloud: " << cloud.points.size() << " pts\n";
 }
 
 
@@ -458,7 +283,7 @@ void Pass::publishHullsAsCloud(const std::string& cloud_frame,
                                std::vector< pcl::PointCloud<pcl::PointXYZ>::Ptr > cloud_ptrs,
                                int secs, int nsecs){
   pcl::PointCloud<pcl::PointXYZRGB> combined_cloud;
-  for (size_t i=0; i<cloud_ptrs.size(); ++i){
+  for (size_t i=0; i<(int)cloud_ptrs.size(); ++i){
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_rgb (new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::copyPointCloud(*cloud_ptrs[i], *cloud_rgb);
 
@@ -652,39 +477,21 @@ int main( int argc, char** argv ){
   pcl::console::setVerbosityLevel(pcl::console::L_ALWAYS);
 
 
-  ros::init(argc, argv, "plane_seg");
+  ros::init(argc, argv, "plane_seg_n3");
   ros::NodeHandle nh("~");
   Pass pass_pt (nh);
   std::unique_ptr<Pass> app = std::make_unique<Pass>(nh);
+  ros::Rate rate(10);
 
-  ROS_INFO_STREAM("plane_seg ros ready");
+  ROS_INFO_STREAM("ros node 3 ready");
   ROS_INFO_STREAM("=============================");
-
-  bool run_test_program = false;
-  nh.param("/plane_seg/run_test_program", run_test_program, false); 
-  std::cout << "run_test_program: " << run_test_program << "\n";
-
-
-  // Enable this to run the test programs
-  if (run_test_program){
-    std::cout << "Running test examples\n";
-    app->processFromFile(0);
-    // app->processFromFile(1);
-    // app->processFromFile(2);
-    // app->processFromFile(3);
-    // RACE examples don't work well
-    //app->processFromFile(4);
-    //app->processFromFile(5);
-
-    std::cout << "Finished!\n";
-    exit(-1);
-  }
-
   ROS_INFO_STREAM("Waiting for ROS messages");
-  ros::Subscriber grid_map_sub_ = nh.subscribe("/os_sensor", 100,
-                                    &Pass::elevationMapCallback, &pass_pt);
-  ros::Subscriber point_cloud_sub_ = nh.subscribe ("/ouster/points", 100,
-                                    &Pass::pointCloudCallback, &pass_pt);
+
+  // while (ros::ok()) {
+  //   ros::spinOnce();    
+  //   rate.sleep();  
+  // }
+
   ros::spin();
 
   return 1;

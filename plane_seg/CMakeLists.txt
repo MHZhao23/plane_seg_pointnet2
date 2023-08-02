@@ -15,10 +15,6 @@ catkin_package(
   CATKIN_DEPENDS pcl_ros
 )
 
-catkin_install_python(PROGRAMS src/Inferrence.py
-  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
-
 include_directories(
   include
   ${catkin_INCLUDE_DIRS}
