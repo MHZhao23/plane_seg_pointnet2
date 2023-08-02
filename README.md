@@ -18,6 +18,8 @@ The edge detection package depends on Rviz Visual Tools and on the Locomotion Vi
 **Run-Time Application:** A sample application (for ANYmal) can be run and visualized (in Rviz) as follows:
 
 ```python
+catkin_make -DPYTHON_EXECUTABLE=/home/minghan/anaconda3/envs/cupy/bin/python
+catkin_make -DPYTHON_EXECUTABLE=/home/minghan/mambaforge/envs/cupy/bin/python
 roslaunch plane_seg_ros anymal.launch
 roslaunch plane_seg_ros view_plane_seg.launch
 ```
