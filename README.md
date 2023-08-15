@@ -1,5 +1,5 @@
 # Plane Seg
-*Plane Seg* is a library for fitting planes to noisy depth camera data. It is developed based on (https://github.com/ori-drs/plane_seg). The main idea is to use PointNet2 for plane points classification, and then cluster the plane points to planes. 
+*Plane Seg PointNet2* is a library for fitting planes to noisy depth camera data. It is developed based on (https://github.com/ori-drs/plane_seg). The main idea is to use PointNet2 for plane points classification, and then cluster the plane points to planes. 
 
 # Using It
 **python env:** This package requires python 3.7.
