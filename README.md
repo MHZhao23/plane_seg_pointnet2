@@ -3,12 +3,11 @@
 
 # Using It
 **python env:** This package requires python 3.7.
-
-
-**Run-Time Application:** A sample application can be run and visualized in Rviz as follows:
 ```
 conda env create -f cupy.yml
 ```
+
+**Run-Time Application:** A sample application can be run and visualized in Rviz as follows:
 
 ```
 conda activate cupy
