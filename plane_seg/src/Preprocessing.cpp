@@ -47,7 +47,7 @@ Preprocessing::
 Preprocessing() {
     setSensorPose(Eigen::Vector3f(0,0,0), Eigen::Vector3f(1,0,0));
     setDownsampleResolution(0.01);
-    setMaxAngleFromHorizontal(45);
+    setMaxAngleFromHorizontal(60);
     setDebug(true);
     setVisual(false);
 }
@@ -96,25 +96,7 @@ go() {
         std::cout << "incloud structure: " << mCloud->width << ", " << mCloud->height << std::endl;
     }
 
-    // ros::NodeHandle node_;
-    // ros::Publisher preprocessed_pub;
-    // preprocessed_pub = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg/processed_cloud", 10);
-
-    // std::cout << "num of subs: " << preprocessed_pub.getNumSubscribers();
-    // sensor_msgs::PointCloud2 output;
-    // pcl::toROSMsg(*mCloud, output);
-    // output.header.stamp = ros::Time(0, 0);
-    // output.header.frame_id = mCloudFrame;
-    // preprocessed_pub.publish(output);
-
-    if (mCloud->size() < 100) {
-        // sensor_msgs::PointCloud2 output;
-        // pcl::toROSMsg(*mCloud, output);
-        // output.header.stamp = ros::Time(0, 0);
-        // output.header.frame_id = mCloudFrame;
-        // preprocessed_pub.publish(output);
-        return mCloud;
-    }
+    if (mCloud->size() < 100) return mCloud;
 
     // ---------------- filtter ----------------
     // voxelize
@@ -127,16 +109,17 @@ go() {
     for (int i = 0; i < (int)cloud->size(); ++i) cloud->points[i].label = i;
 
     // crop 3m
-    int crop_dim = 2;
+    int crop_xdim = 2;
+    int crop_ydim = 3;
+    int crop_zdim = 2;
     pcl::CropBox<pcl::PointXYZL> cropBox;
     cropBox.setInputCloud(cloud);
     Eigen::Vector4f max_pt;
     Eigen::Vector4f min_pt;
-    max_pt << crop_dim, crop_dim, crop_dim, 1;
-    min_pt << -crop_dim, -crop_dim, -crop_dim, 1;
+    max_pt << crop_xdim, crop_ydim, crop_zdim, 1;
+    min_pt << -crop_xdim, -crop_ydim, -crop_zdim, 1;
     cropBox.setMax(max_pt);
     cropBox.setMin(min_pt);
-    // cropBox.setKeepOrganized(true); // some points are filled by NaN
     cropBox.filter(*cloud);
 
     std::cout << "voxelized cloud structure: " << cloud->width << ", " << cloud->height << std::endl;
@@ -146,28 +129,7 @@ go() {
         std::cout << "Voxelized cloud size " << cloud->size() << std::endl;
     }
 
-    if (mCloud->size() < 100) {
-        // sensor_msgs::PointCloud2 output;
-        // pcl::toROSMsg(*mCloud, output);
-        // output.header.stamp = ros::Time(0, 0);
-        // output.header.frame_id = mCloudFrame;
-        // preprocessed_pub.publish(output);
-        return mCloud;
-    }
-
-    // pose
-    cloud->sensor_origin_.head<3>() = mOrigin;
-    cloud->sensor_origin_[3] = 1;
-    Eigen::Vector3f rz = mLookDir;
-    Eigen::Vector3f rx = rz.cross(Eigen::Vector3f::UnitZ());
-    Eigen::Vector3f ry = rz.cross(rx);
-    Eigen::Matrix3f rotation;
-    rotation.col(0) = rx.normalized();
-    rotation.col(1) = ry.normalized();
-    rotation.col(2) = rz.normalized();
-    Eigen::Isometry3f pose = Eigen::Isometry3f::Identity();
-    pose.linear() = rotation;
-    pose.translation() = mOrigin;
+    if (mCloud->size() < 100) return mCloud;
 
     // ---------------- normal estimation ----------------
     auto t0 = std::chrono::high_resolution_clock::now();
@@ -226,12 +188,9 @@ go() {
         std::cout << "Horizontal points remaining " << cloud->size() << std::endl;
     }
 
-    // sensor_msgs::PointCloud2 output;
-    // pcl::toROSMsg(*cloud, output);
-    // output.header.stamp = ros::Time(0, 0);
-    // output.header.frame_id = mCloudFrame;
-    // preprocessed_pub.publish(output);
-    // ros::spin();
+    std::string file_name = "/home/minghan/workspace/plane_detection_NN/PointNet2_plane/test.pcd";
+    pcl::io::savePCDFileBinary(file_name, *cloud);
+
     return cloud;
 
 }

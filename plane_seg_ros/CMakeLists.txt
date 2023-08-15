@@ -29,13 +29,12 @@ add_message_files(
 )
 
 catkin_package(
-  INCLUDE_DIRS
-    #include
+  INCLUDE_DIRS include
   CATKIN_DEPENDS eigen_conversions pcl_conversions tf_conversions pcl_ros plane_seg CATKIN_DEPENDS rospy message_runtime
 )
 
 include_directories(
-#  include
+  include
   ${catkin_INCLUDE_DIRS}
 )
 

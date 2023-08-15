@@ -153,7 +153,7 @@ go() {
   segmenter.setData(mCloud, normals);
   segmenter.setSearchRadius(0.03);
   segmenter.setMaxAngle(mMaxAngleOfPlaneSegmenter);
-  segmenter.setMinPoints(200);
+  segmenter.setMinPoints(100);
   PlaneSegmenter::Result segmenterResult = segmenter.go();
 
   if (mDebug) {
@@ -245,24 +245,38 @@ go() {
     std::cout << "fit each cluster to a plane and then to a rectangle..." << std::flush;
   }
 
-  std::vector<RectangleFitter::Result> results;
-  results.reserve(segmenterResult.mClusterNum);
-  for (int i = 0; i < segmenterResult.mClusterNum; ++i) {
+  int numClusters = segmenterResult.mClusterNum;
+  // std::array<std::array<float, numClusters>, numClusters> diffArry;
+  std::vector<Eigen::Vector4f> planeResults;
+  for (int i = 0; i < numClusters; ++i) {
     // std::cout << "\ncluster " << i << " with size of " << segmenterResult.mClusters[i].size() << std::endl;
     PlaneFitter planeFitter;
     planeFitter.setMaxIterations(mMaxIterations);
     planeFitter.setMaxDistance(mMaxEstimationError);
     planeFitter.setRefineUsingInliers(true);
     PlaneFitter::Result planeFitterRes = planeFitter.go(segmenterResult.mClusters[i]);
+    planeResults.push_back(planeFitterRes.mPlane);
     // std::cout << "\nFitted plane: " << planeFitterRes.mPlane << std::endl;
 
+    // for (int j = 0; j <= i; ++j) {
+    //   diffPlanes = (planeFitterRes.mPlane - planeResults[j]) * (planeFitterRes.mPlane - planeResults[j])
+    //   diffArry[i][j] = diffPlanes;
+    //   diffArry[j][i] = diffPlanes;
+    // }
+  }
+
+  // std::cout << diffArry << std::endl;
+
+  // ---------------- merge planes and rectangularize ----------------
+  std::vector<RectangleFitter::Result> results;
+  results.reserve(segmenterResult.mClusterNum);
+  for (int i = 0; i < segmenterResult.mClusterNum; ++i) {
     RectangleFitter fitter;
     fitter.setDimensions(mBlockDimensions.head<2>());
     fitter.setAlgorithm((RectangleFitter::Algorithm)mRectangleFitAlgorithm);
-    fitter.setData(segmenterResult.mClusters[i], planeFitterRes.mPlane);
+    fitter.setData(segmenterResult.mClusters[i], planeResults[i]);
     auto result = fitter.go();
     results.push_back(result);
-
   }
 
   if (mDebug) {

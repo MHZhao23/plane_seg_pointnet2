@@ -2,7 +2,9 @@
 #include <ros/ros.h>
 #include <ros/console.h>
 #include <ros/package.h>
-
+#include <std_msgs/Time.h>
+#include "ros/time.h"
+#include "time.h"  
 
 #include <eigen_conversions/eigen_msg.h>
 #include <pcl_conversions/pcl_conversions.h>
@@ -39,6 +41,7 @@
 #include <tf2_ros/transform_listener.h>
 #include <tf2_eigen/tf2_eigen.h>
 
+#include "plane_seg_ros/plane_seg_ros.hpp"
 #include "plane_seg/BlockFitter.hpp"
 #include "plane_seg/Preprocessing.hpp"
 #include "plane_seg/Fitting.hpp"
@@ -71,7 +74,7 @@ class Pass{
 
     void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr &msg);
 
-    void preProcessFromFile(int test_example);
+    void preProcessFromFile(std::string scene, int test_example);
     void preProcessCloud(const std::string& cloudFrame, planeseg::LabeledCloud::Ptr& inCloud, Eigen::Vector3f origin, Eigen::Vector3f lookDir);
 
   private:
@@ -79,7 +82,7 @@ class Pass{
     std::vector<double> colors_;
 
     ros::Subscriber point_cloud_sub_;
-    ros::Publisher preprocessed_cloud_pub;
+    ros::Publisher preprocessed_cloud_pub, time_pub;
 
     std::string fixed_frame_ = "odom";  // Frame in which all results are published. "odom" for backwards-compatibility. Likely should be "map".
 
@@ -97,6 +100,7 @@ Pass::Pass(ros::NodeHandle node_):
                                    &Pass::pointCloudCallback, this);
 
   // publishing the pre-processed point cloud from pointnet2
+  time_pub = node_.advertise<std_msgs::Time>("/plane_seg_n1/start_time", 10);
   preprocessed_cloud_pub = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg_n1/preprocessed_cloud", 10);
 
   colors_ = {
@@ -185,35 +189,16 @@ void Pass::pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr &msg){
 }
 
 
-void Pass::preProcessFromFile(int test_example){
+void Pass::preProcessFromFile(std::string scene, int test_example){
 
   // to allow ros connections to register
   sleep(2);
 
-  std::string inFile;
   std::string home_dir = ros::package::getPath("plane_seg_ros");
+  std::string inFile = home_dir + "/data/realdata/" + scene + "_" + std::to_string(test_example) + ".pcd";
   Eigen::Vector3f origin, lookDir;
-  if (test_example == 0){ // LIDAR example from Atlas during DRC
-    inFile = home_dir + "/data/terrain/tilted-steps.pcd";
-    origin <<0.248091, 0.012443, 1.806473;
-    lookDir <<0.837001, 0.019831, -0.546842;
-  }else if (test_example == 1){ // LIDAR example from Atlas during DRC
-    inFile = home_dir + "/data/terrain/terrain_med.pcd";
-    origin << -0.028862, -0.007466, 0.087855;
-    lookDir << 0.999890, -0.005120, -0.013947;
-  }else if (test_example == 2){ // LIDAR example from Atlas during DRC
-    inFile = home_dir + "/data/terrain/terrain_close_rect.pcd";
-    origin << -0.028775, -0.005776, 0.087898;
-    lookDir << 0.999956, -0.005003, 0.007958;
-  }else if (test_example == 3){ // RGBD (Realsense D435) example from ANYmal
-    inFile = home_dir + "/data/terrain/anymal/ori_entrance_stair_climb/06.pcd";
-    origin << -0.028775, -0.005776, 0.987898;
-    lookDir << 0.999956, -0.005003, 0.007958;
-  }else if (test_example == 4){ // Leica map
-    inFile = home_dir + "/data/ouster/test06301688134581.pcd";
-    origin << -0.028775, -0.005776, 0.987898;
-    lookDir << 0.999956, -0.005003, 0.007958;
-  }
+  origin << 0, 0, 0;
+  lookDir << 1, 0, 0;
 
   std::cout << "\n =========== Processing test example " << test_example << " ===========\n";
   std::cout << inFile << "\n";
@@ -234,9 +219,9 @@ void Pass::preProcessFromFile(int test_example){
 
 
 void Pass::preProcessCloud(const std::string& cloudFrame, planeseg::LabeledCloud::Ptr& inCloud, Eigen::Vector3f origin, Eigen::Vector3f lookDir){
-#ifdef WITH_TIMING
-  auto tic = std::chrono::high_resolution_clock::now();
-#endif
+  ros::Time begin = ros::Time::now();
+  // std::chrono::time_point<std::chrono::high_resolution_clock> startT;
+  // startT = std::chrono::high_resolution_clock::now();
 
   planeseg::Preprocessing preprossesor;
   preprossesor.setSensorPose(origin, lookDir);
@@ -246,6 +231,12 @@ void Pass::preProcessCloud(const std::string& cloudFrame, planeseg::LabeledCloud
   preprossesor.setVisual(true);
   planeseg::LabeledCloud::Ptr result_cloud = preprossesor.go();
 
+  if (time_pub.getNumSubscribers() > 0) {
+    std_msgs::Time timeMsg;
+    timeMsg.data = begin;
+    time_pub.publish(timeMsg);
+  }
+            
   if (preprocessed_cloud_pub.getNumSubscribers() > 0) {
     sensor_msgs::PointCloud2 output;
     pcl::toROSMsg(*result_cloud, output);
@@ -271,14 +262,9 @@ int main( int argc, char** argv ){
   ROS_INFO_STREAM("ros node 1 ready");
   ROS_INFO_STREAM("=============================");
 
-  app->preProcessFromFile(0);
+  std::string scene = "scene1";
+  app->preProcessFromFile(scene, 12);
   ros::spin();
-
-  // while (ros::ok()) {
-  //   app->preProcessFromFile(0);
-  //   ros::spinOnce();
-  //   rate.sleep();  
-  // }
 
   return 1;
 }

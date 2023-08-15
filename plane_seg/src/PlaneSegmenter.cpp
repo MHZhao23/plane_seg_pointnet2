@@ -81,14 +81,14 @@ go() {
   std::vector<int> validLables; // 0, -1, 1, -1, 2 ...
   std::deque<int> workQueue;
 
-  int ppoint_num = 0;
-  for (int i = 0; i < n; ++i) {
-    // std::cout << mCloud->points[i].x << ", " << mCloud->points[i].y << ", " << mCloud->points[i].z << ", " << mCloud->points[i].label << "/// " << std::flush;
-    if (mCloud->points[i].label > 0) ppoint_num += 1;
-  }
-  std::cout<< "number of plane points: " << ppoint_num << std::endl;
+  // int ppoint_num = 0;
+  // for (int i = 0; i < n; ++i) {
+  //   // std::cout << mCloud->points[i].x << ", " << mCloud->points[i].y << ", " << mCloud->points[i].z << ", " << mCloud->points[i].label << "/// " << std::flush;
+  //   if (mCloud->points[i].label > 0) ppoint_num += 1;
+  // }
+  // std::cout<< "number of plane points: " << ppoint_num << std::endl;
   auto processPoint = [&](const int iIndex) {
-      if (mCloud->points[iIndex].label > 0 && labels[iIndex] < 0) {
+      if (labels[iIndex] < 0) {
       // std::cout << iIndex << ", " << std::flush;
       const auto& cloudNorm = mNormals->points[iIndex];
       const Eigen::Vector3f norm(cloudNorm.normal_x, cloudNorm.normal_y,

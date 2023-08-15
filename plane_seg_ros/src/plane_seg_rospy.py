@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 import os
 import sys
-sys.path.insert(0, "/home/minghan/anaconda3/envs/cupy/lib/python3.8/site-packages")
+# sys.path.insert(0, "/home/minghan/anaconda3/envs/cupy/lib/python3.8/site-packages")
+import time
 import argparse
 import logging
 import importlib
@@ -21,7 +22,8 @@ from sensor_msgs import point_cloud2
 from sensor_msgs.msg import PointCloud2, PointField
 from std_msgs.msg import Header
 
-def SceneUnlabelledData(points, num_classes, num_point, stride=1, block_size=2, padding=0.001):
+
+def SceneUnlabelledData(points, num_classes, num_point, block_size, padding=0.001):
     """
     Arguments:
 
@@ -29,6 +31,8 @@ def SceneUnlabelledData(points, num_classes, num_point, stride=1, block_size=2, 
     num_point: the number of points in each sampling group
     mod: train or test
     """
+    
+    stride = block_size / 2.0
     coord_min, coord_max = np.amin(points, axis=0)[:3], np.amax(points, axis=0)[:3]
     grid_x = int(np.ceil(float(coord_max[0] - coord_min[0] - block_size) / stride) + 1)
     grid_y = int(np.ceil(float(coord_max[1] - coord_min[1] - block_size) / stride) + 1)
@@ -44,23 +48,24 @@ def SceneUnlabelledData(points, num_classes, num_point, stride=1, block_size=2, 
             point_idxs = np.where(
                 (points[:, 0] >= s_x - padding) & (points[:, 0] <= e_x + padding) & (points[:, 1] >= s_y - padding) & (
                             points[:, 1] <= e_y + padding))[0]
-            if point_idxs.size == 0: # selected points size
+            # ignore those isolated points (the labels of those points are 0)
+            if point_idxs.size < 5:
                 continue
-            # point_idxs is selected points, point_size is full batches of points
-            # when full batch of points is more than selected points, select some points randomly to fill up the batches.
-            num_batch = int(np.ceil(point_idxs.size / num_point)) # how many batch of points
-            point_size = int(num_batch * num_point) # full batch of points
+            num_batch = int(np.ceil(point_idxs.size / num_point))
+            point_size = int(num_batch * num_point)
             replace = False if (point_size - point_idxs.size <= point_idxs.size) else True
             point_idxs_repeat = np.random.choice(point_idxs, point_size - point_idxs.size, replace=replace)
             point_idxs = np.concatenate((point_idxs, point_idxs_repeat))
             np.random.shuffle(point_idxs)
             data_batch = points[point_idxs, :]
+            # Normalized method 1:
             normlized_xyz = np.zeros((point_size, 3))
             normlized_xyz[:, 0] = data_batch[:, 0] / coord_max[0]
             normlized_xyz[:, 1] = data_batch[:, 1] / coord_max[1]
             normlized_xyz[:, 2] = data_batch[:, 2] / coord_max[2]
             data_batch[:, 0] = data_batch[:, 0] - (s_x + block_size / 2.0)
             data_batch[:, 1] = data_batch[:, 1] - (s_y + block_size / 2.0)
+            data_batch[:, 2] = data_batch[:, 2] - np.mean(data_batch[:, 2])
             data_batch = np.concatenate((data_batch, normlized_xyz), axis=1)
 
             data_scene = np.vstack([data_scene, data_batch]) if data_scene.size else data_batch
@@ -69,6 +74,7 @@ def SceneUnlabelledData(points, num_classes, num_point, stride=1, block_size=2, 
     index_scene = index_scene.reshape((-1, num_point))
 
     return data_scene, index_scene
+
 
 def square_distance(src, dst):
     """
@@ -421,12 +427,15 @@ def callback(data):
     points[:,0] = pc['x']
     points[:,1] = pc['y']
     points[:,2] = pc['z']
+    coor_min = np.amin(points, axis=0)
+    points = points - coor_min
+    print("subscribed points: ", points.shape)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print("using {} device.".format(device))
 
     '''MODEL LOADING'''
     num_classes = 2
-    model_dir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', 'model/best_model.pth'))
+    model_dir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', 'model/best_model_0813.pth'))
     classifier = get_model(num_classes).to(device)
     checkpoint = torch.load(model_dir, map_location=torch.device('cpu'))
     classifier.load_state_dict(checkpoint['model_state_dict'])
@@ -434,37 +443,51 @@ def callback(data):
 
     '''INFERRENCE'''
     num_votes = 3
-    batch_size = 32
-    num_points = 4096
-    pred_label = np.ones((points.shape[0], 1))
-    # with torch.no_grad():
-    #     vote_label_pool = np.zeros((points.shape[0], num_classes))
-    #     for _ in tqdm(range(num_votes), total=num_votes):
-    #         scene_data, scene_point_index = SceneUnlabelledData(points, num_classes=2, num_point=4096)
-    #         num_blocks = scene_data.shape[0]
-    #         s_batch_num = (num_blocks + batch_size - 1) // batch_size
-    #         batch_data = np.zeros((batch_size, num_points, 6))
-    #         batch_label = np.zeros((batch_size, num_points))
-    #         batch_point_index = np.zeros((batch_size, num_points))
+    batch_size = 256
+    num_points = 256
+    block_size = 0.1
+    nn_time = 0.0
+    infer_start = time.time()
 
-    #         for sbatch in range(s_batch_num):
-    #             start_idx = sbatch * batch_size
-    #             end_idx = min((sbatch + 1) * batch_size, num_blocks)
-    #             real_batch_size = end_idx - start_idx
-    #             batch_data[0:real_batch_size, ...] = scene_data[start_idx:end_idx, ...]
-    #             batch_point_index[0:real_batch_size, ...] = scene_point_index[start_idx:end_idx, ...]
+    with torch.no_grad():
+        pred_label = np.zeros((points.shape[0], 1), dtype=int)
+        scene_data, scene_point_index = SceneUnlabelledData(points, num_classes, num_points, block_size)
+        num_blocks = scene_data.shape[0]
+        s_batch_num = (num_blocks + batch_size - 1) // batch_size
+        batch_data = np.zeros((batch_size, num_points, 6))
+        batch_point_index = np.zeros((batch_size, num_points), dtype=int)
+        print("num of points: ", points.shape[0], "after grouping: ", scene_data.shape, "num of batches: ", s_batch_num, )
 
-    #             torch_data = torch.Tensor(batch_data)
-    #             torch_data = torch_data.float().to(device)
-    #             torch_data = torch_data.transpose(2, 1)
-    #             seg_pred, _ = classifier(torch_data)
-    #             batch_pred_label = seg_pred.contiguous().cpu().data.max(2)[1].numpy()
+        for sbatch in range(s_batch_num):
+            # t0 = time.time()
+            start_idx = sbatch * batch_size
+            end_idx = min((sbatch + 1) * batch_size, num_blocks)
+            real_batch_size = end_idx - start_idx
+            batch_data[0:real_batch_size, ...] = scene_data[start_idx:end_idx, ...]
+            batch_point_index[0:real_batch_size, ...] = scene_point_index[start_idx:end_idx, ...]
 
-    #             vote_label_pool = add_vote(vote_label_pool, batch_point_index[0:real_batch_size, ...],
-    #                                        batch_pred_label[0:real_batch_size, ...])
+            torch_data = torch.Tensor(batch_data)
+            torch_data = torch_data.float().to(device)
+            torch_data = torch_data.transpose(2, 1)
+            # t1 = time.time()
+            # t11 = time.time()
+            seg_pred, _ = classifier(torch_data)
+            t12 = time.time()
+            batch_pred_label = seg_pred.contiguous().cpu().data.max(2)[1].numpy()
 
-    #     # pred_label = np.argmax(vote_label_pool, 1)
-    #     pred_label = np.expand_dims(np.argmax(vote_label_pool, 1), axis=1)
+            # t2 = time.time()
+            batch_pred_label_all = batch_pred_label.reshape(-1)
+            batch_point_index_all = batch_point_index.reshape(-1)
+            batch_pred_label_plane = batch_pred_label_all[batch_pred_label_all==1]
+            batch_point_index_plane = batch_point_index_all[batch_pred_label_all==1]
+            pred_label[batch_point_index_plane] = 1
+            # t3 = time.time()
+            # nn_time += (t12 - t11)
+        infer_end = time.time()
+        # print("NN cost: ", nn_time)
+        print("Inference cost: ", infer_end - infer_start)
+
+    points = points + coor_min
     labelled_points = np.hstack((points, pred_label))
     plane_points_idx = np.where(pred_label==1)[0]
     plane_points = labelled_points[plane_points_idx, :]
@@ -491,21 +514,12 @@ def callback(data):
     labelled_pc2 = point_cloud2.create_cloud(header, fields, labelled_points)
     plane_pc2 = point_cloud2.create_cloud(header, fields, plane_points)
     test_labels = ros_numpy.numpify(labelled_pc2)['label']
-    print("the number of plane points: ", test_labels[test_labels==1].size)
 
     while not rospy.is_shutdown():
         labelled_cloud_pub = rospy.Publisher('/plane_seg_n2/labelled_cloud', PointCloud2, queue_size=10)
         labelled_cloud_pub.publish(labelled_pc2)
         plane_cloud_pub = rospy.Publisher('/plane_seg_n2/plane_cloud', PointCloud2, queue_size=10)
         plane_cloud_pub.publish(plane_pc2)
-    # labelled_cloud_pub = rospy.Publisher('/plane_seg_n2/labelled_cloud', PointCloud2, queue_size=10)
-    # plane_cloud_pub = rospy.Publisher('/plane_seg_n2/plane_cloud', PointCloud2, queue_size=10)
-    # rospy.sleep(1.)
-    # rate = rospy.Rate(10) # 10hz
-    # while not rospy.is_shutdown():
-    #     labelled_cloud_pub.publish(labelled_pc2)
-    #     plane_cloud_pub.publish(plane_points)
-    #     rate.sleep()
 
 
 if __name__ == '__main__':
@@ -514,10 +528,6 @@ if __name__ == '__main__':
     rospy.loginfo("ros node 2 ready")
     rospy.loginfo("=============================")
     rate = rospy.Rate(10) # 10hz
-
-    # while not rospy.is_shutdown():
-    #     rospy.Subscriber("/plane_seg_n1/preprocessed_cloud", PointCloud2, callback)
-    #     rate.sleep()
 
     rospy.Subscriber("/plane_seg_n1/preprocessed_cloud", PointCloud2, callback)
     rospy.spin()

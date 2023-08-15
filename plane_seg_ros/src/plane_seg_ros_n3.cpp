@@ -2,6 +2,9 @@
 #include <ros/ros.h>
 #include <ros/console.h>
 #include <ros/package.h>
+#include <std_msgs/Time.h>
+#include "ros/time.h"
+#include "time.h"  
 
 #include <eigen_conversions/eigen_msg.h>
 #include <pcl_conversions/pcl_conversions.h>
@@ -39,6 +42,8 @@
 #include <tf2_ros/transform_listener.h>
 #include <tf2_eigen/tf2_eigen.h>
 
+// #include "plane_seg/Timer.hpp"
+#include "plane_seg_ros/plane_seg_ros.hpp"
 #include "plane_seg/BlockFitter.hpp"
 #include "plane_seg/Preprocessing.hpp"
 #include "plane_seg/Fitting.hpp"
@@ -69,7 +74,8 @@ class Pass{
     Pass(ros::NodeHandle node_);
     ~Pass() = default;
 
-    void labelledPointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr &msg);
+    void timeCallback(const std_msgs::Time::ConstPtr &msg);
+    void planePointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr &msg);
 
     void preProcessCloud(const std::string& cloudFrame, planeseg::LabeledCloud::Ptr& inCloud, Eigen::Vector3f origin, Eigen::Vector3f lookDir);
     void fittingPlane(const std::string& cloudFrame, planeseg::LabeledCloud::Ptr& inCloud, Eigen::Vector3f origin, Eigen::Vector3f lookDir);
@@ -80,10 +86,11 @@ class Pass{
     void publishResult(const std::string& cloud_frame);
 
   private:
+    ros::Time begin;
     ros::NodeHandle node_;
     std::vector<double> colors_;
 
-    ros::Subscriber point_cloud_sub_, labelled_cloud_sub_;
+    ros::Subscriber time_sub_, plane_cloud_sub_;
     ros::Publisher preprocessed_cloud_pub, received_cloud_pub_, hull_cloud_pub_, hull_markers_pub_, look_pose_pub_, hull_marker_array_pub_;
 
     std::string fixed_frame_ = "odom";  // Frame in which all results are published. "odom" for backwards-compatibility. Likely should be "map".
@@ -100,8 +107,10 @@ Pass::Pass(ros::NodeHandle node_):
     tfListener_(tfBuffer_) {
 
   // // subscribe the labelled point cloud
-  labelled_cloud_sub_ = node_.subscribe("/plane_seg_n2/labelled_cloud", 10,
-                                        &Pass::labelledPointCloudCallback, this);
+  time_sub_ = node_.subscribe("/plane_seg_n1/start_time", 10,
+                                        &Pass::timeCallback, this);
+  plane_cloud_sub_ = node_.subscribe("/plane_seg_n2/plane_cloud", 10,
+                                        &Pass::planePointCloudCallback, this);
                                         
   // publishing the results
   received_cloud_pub_ = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg_n3/received_cloud", 10);
@@ -168,7 +177,12 @@ Eigen::Vector3f convertRobotPoseToSensorLookDir(Eigen::Isometry3d robot_pose){
 }
 
 
-void Pass::labelledPointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr &msg){
+void Pass::timeCallback(const std_msgs::Time::ConstPtr &msg) {
+  begin = msg->data;
+}
+
+
+void Pass::planePointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr &msg){
   planeseg::LabeledCloud::Ptr inCloud(new planeseg::LabeledCloud());
   pcl::fromROSMsg(*msg,*inCloud);
 
@@ -194,10 +208,6 @@ void Pass::labelledPointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr &
 
 
 void Pass::fittingPlane(const std::string& cloudFrame, planeseg::LabeledCloud::Ptr& inCloud, Eigen::Vector3f origin, Eigen::Vector3f lookDir){
-#ifdef WITH_TIMING
-  auto tic = std::chrono::high_resolution_clock::now();
-#endif
-
   planeseg::Fitting cfitter;
   cfitter.setFrame(cloudFrame);
   cfitter.setCloud(inCloud);
@@ -206,9 +216,16 @@ void Pass::fittingPlane(const std::string& cloudFrame, planeseg::LabeledCloud::P
   cfitter.setVisual(false);
   fresult_ = cfitter.go();
 
-#ifdef WITH_TIMING
-  auto toc_1 = std::chrono::high_resolution_clock::now();
-#endif
+  ros::Time end = ros::Time::now();
+  ros::Duration dt = end - begin;
+  double secs = dt.toSec();
+  std::cout << "[PlaneSegmentation] took " << secs << " sec" << std::endl;
+  // extern std::chrono::time_point<std::chrono::high_resolution_clock> startT;
+  // auto startTime = startT;
+  // auto endTime = std::chrono::high_resolution_clock::now();
+  // auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+  // std::cout << std::to_string(std::time(0)) << std::endl;
+  // std::cout << "[PlaneSegmentation] took " << dt.count()/1e3 << " sec" << std::endl;
 
   if (look_pose_pub_.getNumSubscribers() > 0) {
     Eigen::Vector3f rz = lookDir;
@@ -239,13 +256,6 @@ void Pass::fittingPlane(const std::string& cloudFrame, planeseg::LabeledCloud::P
   }
 
   publishResult(cloudFrame);
-
-#ifdef WITH_TIMING
-  auto toc_2 = std::chrono::high_resolution_clock::now();
-
-  // std::cout << "[BlockFitter] took " << 1e-3 * std::chrono::duration_cast<std::chrono::microseconds>(toc_1 - tic).count() << "ms" << std::endl;
-  // std::cout << "[Publishing] took " << 1e-3 * std::chrono::duration_cast<std::chrono::microseconds>(toc_2 - toc_1).count() << "ms" << std::endl;
-#endif
 }
 
 
