@@ -91,7 +91,7 @@ class Pass{
     std::vector<double> colors_;
 
     ros::Subscriber time_sub_, plane_cloud_sub_;
-    ros::Publisher preprocessed_cloud_pub, received_cloud_pub_, hull_cloud_pub_, hull_markers_pub_, look_pose_pub_, hull_marker_array_pub_;
+    ros::Publisher preprocessed_cloud_pub, hull_cloud_pub_, hull_markers_pub_, look_pose_pub_, hull_marker_array_pub_;
 
     std::string fixed_frame_ = "odom";  // Frame in which all results are published. "odom" for backwards-compatibility. Likely should be "map".
 
@@ -107,13 +107,12 @@ Pass::Pass(ros::NodeHandle node_):
     tfListener_(tfBuffer_) {
 
   // // subscribe the labelled point cloud
-  time_sub_ = node_.subscribe("/plane_seg_n1/start_time", 10,
+  time_sub_ = node_.subscribe("/plane_seg_n1/start_time", 100,
                                         &Pass::timeCallback, this);
-  plane_cloud_sub_ = node_.subscribe("/plane_seg_n2/plane_cloud", 10,
+  plane_cloud_sub_ = node_.subscribe("/plane_seg_n2/plane_cloud", 100,
                                         &Pass::planePointCloudCallback, this);
                                         
   // publishing the results
-  received_cloud_pub_ = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg_n3/received_cloud", 10);
   hull_cloud_pub_ = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg_n3/hull_cloud", 10);
   hull_markers_pub_ = node_.advertise<visualization_msgs::Marker>("/plane_seg_n3/hull_markers", 10);
   hull_marker_array_pub_ = node_.advertise<visualization_msgs::MarkerArray>("/plane_seg_n3/hull_marker_array", 10);
@@ -211,8 +210,8 @@ void Pass::fittingPlane(const std::string& cloudFrame, planeseg::LabeledCloud::P
   planeseg::Fitting cfitter;
   cfitter.setFrame(cloudFrame);
   cfitter.setCloud(inCloud);
-  cfitter.setMaxAngleOfPlaneSegmenter(10);
-  cfitter.setDebug(true);
+  cfitter.setMaxAngleOfPlaneSegmenter(15);
+  cfitter.setDebug(false);
   cfitter.setVisual(false);
   fresult_ = cfitter.go();
 
@@ -245,14 +244,6 @@ void Pass::fittingPlane(const std::string& cloudFrame, planeseg::LabeledCloud::P
     msg.header.frame_id = cloudFrame;
     tf::poseEigenToMsg(pose_d, msg.pose);
     look_pose_pub_.publish(msg);
-  }
-
-  if (received_cloud_pub_.getNumSubscribers() > 0) {
-    sensor_msgs::PointCloud2 output;
-    pcl::toROSMsg(*inCloud, output);
-    output.header.stamp = ros::Time(0, 0);
-    output.header.frame_id = cloudFrame;
-    received_cloud_pub_.publish(output);
   }
 
   publishResult(cloudFrame);

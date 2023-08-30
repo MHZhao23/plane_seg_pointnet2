@@ -91,10 +91,8 @@ setVisual(const bool iVal) {
 
 LabeledCloud::Ptr Preprocessing::
 go() {
-    if (mDebug) {
-        std::cout << "\n\n******* begin pre-processing *******" << std::endl;
-        std::cout << "incloud structure: " << mCloud->width << ", " << mCloud->height << std::endl;
-    }
+    std::cout << "\n\n******* begin pre-processing *******" << std::endl;
+    auto global_t0 = std::chrono::high_resolution_clock::now();
 
     if (mCloud->size() < 100) return mCloud;
 
@@ -108,21 +106,19 @@ go() {
     voxelGrid.filter(*cloud);
     for (int i = 0; i < (int)cloud->size(); ++i) cloud->points[i].label = i;
 
-    // crop 3m
-    int crop_xdim = 2;
-    int crop_ydim = 3;
-    int crop_zdim = 2;
-    pcl::CropBox<pcl::PointXYZL> cropBox;
-    cropBox.setInputCloud(cloud);
-    Eigen::Vector4f max_pt;
-    Eigen::Vector4f min_pt;
-    max_pt << crop_xdim, crop_ydim, crop_zdim, 1;
-    min_pt << -crop_xdim, -crop_ydim, -crop_zdim, 1;
-    cropBox.setMax(max_pt);
-    cropBox.setMin(min_pt);
-    cropBox.filter(*cloud);
-
-    std::cout << "voxelized cloud structure: " << cloud->width << ", " << cloud->height << std::endl;
+    // // crop 3m
+    // int crop_xdim = 2;
+    // int crop_ydim = 3;
+    // int crop_zdim = 2;
+    // pcl::CropBox<pcl::PointXYZL> cropBox;
+    // cropBox.setInputCloud(cloud);
+    // Eigen::Vector4f max_pt;
+    // Eigen::Vector4f min_pt;
+    // max_pt << crop_xdim, crop_ydim, crop_zdim, 1;
+    // min_pt << -crop_xdim, -crop_ydim, -crop_zdim, 1;
+    // cropBox.setMax(max_pt);
+    // cropBox.setMin(min_pt);
+    // cropBox.filter(*cloud);
 
     if (mDebug) {
         std::cout << "Original cloud size " << mCloud->size() << std::endl;
@@ -188,8 +184,9 @@ go() {
         std::cout << "Horizontal points remaining " << cloud->size() << std::endl;
     }
 
-    std::string file_name = "/home/minghan/workspace/plane_detection_NN/PointNet2_plane/test.pcd";
-    pcl::io::savePCDFileBinary(file_name, *cloud);
+    auto global_t1 = std::chrono::high_resolution_clock::now();
+    auto global_dt = std::chrono::duration_cast<std::chrono::milliseconds>(global_t1 - global_t0);
+    std::cout << "finished in " << global_dt.count()/1e3 << " sec" << std::endl;
 
     return cloud;
 

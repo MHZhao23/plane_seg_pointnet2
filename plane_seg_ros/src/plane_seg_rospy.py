@@ -58,14 +58,11 @@ def SceneUnlabelledData(points, num_classes, num_point, block_size, padding=0.00
             point_idxs = np.concatenate((point_idxs, point_idxs_repeat))
             np.random.shuffle(point_idxs)
             data_batch = points[point_idxs, :]
-            # Normalized method 1:
-            normlized_xyz = np.zeros((point_size, 3))
-            normlized_xyz[:, 0] = data_batch[:, 0] / coord_max[0]
-            normlized_xyz[:, 1] = data_batch[:, 1] / coord_max[1]
-            normlized_xyz[:, 2] = data_batch[:, 2] / coord_max[2]
-            data_batch[:, 0] = data_batch[:, 0] - (s_x + block_size / 2.0)
-            data_batch[:, 1] = data_batch[:, 1] - (s_y + block_size / 2.0)
+            data_batch[:, 0] = data_batch[:, 0] - (s_x + stride)
+            data_batch[:, 1] = data_batch[:, 1] - (s_y + stride)
             data_batch[:, 2] = data_batch[:, 2] - np.mean(data_batch[:, 2])
+            normlized_xyz = data_batch[:, :3] - np.amin(data_batch[:, :3], axis=0)
+            normlized_xyz = normlized_xyz / np.amax(normlized_xyz, axis=0)
             data_batch = np.concatenate((data_batch, normlized_xyz), axis=1)
 
             data_scene = np.vstack([data_scene, data_batch]) if data_scene.size else data_batch
@@ -378,11 +375,10 @@ class PointNetFeaturePropagation(nn.Module):
 class get_model(nn.Module):
     def __init__(self, num_classes):
         super(get_model, self).__init__()
-        self.sa1 = PointNetSetAbstraction(1024, 0.1, 32, 6 + 3, [32, 32, 64], False)
-        self.sa2 = PointNetSetAbstraction(256, 0.2, 32, 64 + 3, [64, 64, 128], False)
-        self.sa3 = PointNetSetAbstraction(64, 0.4, 32, 128 + 3, [128, 128, 256], False)
-        self.sa4 = PointNetSetAbstraction(16, 0.8, 32, 256 + 3, [256, 256, 512], False)
-        self.fp4 = PointNetFeaturePropagation(768, [256, 256])
+        
+        self.sa1 = PointNetSetAbstraction(256, 0.1, 32, 6 + 3, [32, 32, 64], False)
+        self.sa2 = PointNetSetAbstraction(64, 0.2, 32, 64 + 3, [64, 64, 128], False)
+        self.sa3 = PointNetSetAbstraction(16, 0.4, 32, 128 + 3, [128, 128, 256], False)
         self.fp3 = PointNetFeaturePropagation(384, [256, 256])
         self.fp2 = PointNetFeaturePropagation(320, [256, 128])
         self.fp1 = PointNetFeaturePropagation(128, [128, 128, 128])
@@ -398,9 +394,7 @@ class get_model(nn.Module):
         l1_xyz, l1_points = self.sa1(l0_xyz, l0_points)
         l2_xyz, l2_points = self.sa2(l1_xyz, l1_points)
         l3_xyz, l3_points = self.sa3(l2_xyz, l2_points)
-        l4_xyz, l4_points = self.sa4(l3_xyz, l3_points)
 
-        l3_points = self.fp4(l3_xyz, l4_xyz, l3_points, l4_points)
         l2_points = self.fp3(l2_xyz, l3_xyz, l2_points, l3_points)
         l1_points = self.fp2(l1_xyz, l2_xyz, l1_points, l2_points)
         l0_points = self.fp1(l0_xyz, l1_xyz, None, l1_points)
@@ -409,18 +403,12 @@ class get_model(nn.Module):
         x = self.conv2(x)
         x = F.log_softmax(x, dim=1)
         x = x.permute(0, 2, 1)
-        return x, l4_points
+        return x, l3_points
 
-def add_vote(vote_label_pool, point_idx, pred_label):
-    B = pred_label.shape[0]
-    N = pred_label.shape[1]
-    for b in range(B):
-        for n in range(N):
-            vote_label_pool[int(point_idx[b, n]), int(pred_label[b, n])] += 1
-    return vote_label_pool
 
 def callback(data):
     print("\n\n******* begin points classification *******")
+    classification_start = time.time()
     '''DATA PREPARING'''
     pc = ros_numpy.numpify(data)
     points = np.zeros((pc.shape[0],3))
@@ -429,23 +417,22 @@ def callback(data):
     points[:,2] = pc['z']
     coor_min = np.amin(points, axis=0)
     points = points - coor_min
-    print("subscribed points: ", points.shape)
+    # print("subscribed points: ", points.shape)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print("using {} device.".format(device))
 
     '''MODEL LOADING'''
     num_classes = 2
-    model_dir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', 'model/best_model_0813.pth'))
+    model_dir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', 'model/model.pth'))
     classifier = get_model(num_classes).to(device)
-    checkpoint = torch.load(model_dir, map_location=torch.device('cpu'))
+    checkpoint = torch.load(model_dir)
     classifier.load_state_dict(checkpoint['model_state_dict'])
     classifier = classifier.eval()
 
     '''INFERRENCE'''
-    num_votes = 3
     batch_size = 256
-    num_points = 256
-    block_size = 0.1
+    num_points = 512
+    block_size = 0.2
     nn_time = 0.0
     infer_start = time.time()
 
@@ -456,10 +443,9 @@ def callback(data):
         s_batch_num = (num_blocks + batch_size - 1) // batch_size
         batch_data = np.zeros((batch_size, num_points, 6))
         batch_point_index = np.zeros((batch_size, num_points), dtype=int)
-        print("num of points: ", points.shape[0], "after grouping: ", scene_data.shape, "num of batches: ", s_batch_num, )
+        # print("num of points: ", points.shape[0], "after grouping: ", scene_data.shape, "num of batches: ", s_batch_num, )
 
         for sbatch in range(s_batch_num):
-            # t0 = time.time()
             start_idx = sbatch * batch_size
             end_idx = min((sbatch + 1) * batch_size, num_blocks)
             real_batch_size = end_idx - start_idx
@@ -469,7 +455,6 @@ def callback(data):
             torch_data = torch.Tensor(batch_data)
             torch_data = torch_data.float().to(device)
             torch_data = torch_data.transpose(2, 1)
-            # t1 = time.time()
             # t11 = time.time()
             seg_pred, _ = classifier(torch_data)
             t12 = time.time()
@@ -481,43 +466,31 @@ def callback(data):
             batch_pred_label_plane = batch_pred_label_all[batch_pred_label_all==1]
             batch_point_index_plane = batch_point_index_all[batch_pred_label_all==1]
             pred_label[batch_point_index_plane] = 1
-            # t3 = time.time()
             # nn_time += (t12 - t11)
         infer_end = time.time()
         # print("NN cost: ", nn_time)
         print("Inference cost: ", infer_end - infer_start)
 
     points = points + coor_min
-    labelled_points = np.hstack((points, pred_label))
     plane_points_idx = np.where(pred_label==1)[0]
-    plane_points = labelled_points[plane_points_idx, :]
-
-    labelled_points = labelled_points.tolist()
+    plane_points = points[plane_points_idx, :]
     plane_points = plane_points.tolist()
-
-    for lp in labelled_points:
-        lp[3] = int(lp[3])
-
-    for pp in plane_points:
-        pp[3] = int(pp[3])
 
     # ---------- publish ----------
     # type of "label" should be exactly the same as https://pointclouds.org/documentation/structpcl_1_1_point_x_y_z_l.html
     # all avaliable type can be found in sensor_msgs/PointField Message http://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/PointField.html
     fields = [PointField('x', 0, PointField.FLOAT32, 1),
               PointField('y', 4, PointField.FLOAT32, 1),
-              PointField('z', 8, PointField.FLOAT32, 1),
-              PointField('label', 12, PointField.UINT32, 1)]
+              PointField('z', 8, PointField.FLOAT32, 1)]
     header = Header()
     header.stamp = rospy.Time().now()
     header.frame_id = "odom"
-    labelled_pc2 = point_cloud2.create_cloud(header, fields, labelled_points)
     plane_pc2 = point_cloud2.create_cloud(header, fields, plane_points)
-    test_labels = ros_numpy.numpify(labelled_pc2)['label']
+
+    classification_end = time.time()
+    print("classification cost: ", classification_end - classification_start)
 
     while not rospy.is_shutdown():
-        labelled_cloud_pub = rospy.Publisher('/plane_seg_n2/labelled_cloud', PointCloud2, queue_size=10)
-        labelled_cloud_pub.publish(labelled_pc2)
         plane_cloud_pub = rospy.Publisher('/plane_seg_n2/plane_cloud', PointCloud2, queue_size=10)
         plane_cloud_pub.publish(plane_pc2)
 
@@ -527,7 +500,7 @@ if __name__ == '__main__':
     rospy.init_node('plane_seg_n2', anonymous=True)
     rospy.loginfo("ros node 2 ready")
     rospy.loginfo("=============================")
-    rate = rospy.Rate(10) # 10hz
+    rate = rospy.Rate(100) # 10hz
 
     rospy.Subscriber("/plane_seg_n1/preprocessed_cloud", PointCloud2, callback)
     rospy.spin()

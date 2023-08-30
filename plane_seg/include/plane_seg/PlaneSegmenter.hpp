@@ -14,7 +14,7 @@ public:
   struct Result {
     std::vector<MatrixX3f> mClusters;
     std::vector<int> mLabels;
-    std::vector<int> clusterSizes;
+    std::vector<int> mClusterSizes;
     int mClusterNum;
 
     // std::unordered_map<int,Eigen::Vector4f> mPlanes;

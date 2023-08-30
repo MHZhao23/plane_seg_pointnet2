@@ -82,7 +82,7 @@ class Pass{
     std::vector<double> colors_;
 
     ros::Subscriber point_cloud_sub_;
-    ros::Publisher preprocessed_cloud_pub, time_pub;
+    ros::Publisher preprocessed_cloud_pub, received_cloud_pub_, time_pub;
 
     std::string fixed_frame_ = "odom";  // Frame in which all results are published. "odom" for backwards-compatibility. Likely should be "map".
 
@@ -100,8 +100,9 @@ Pass::Pass(ros::NodeHandle node_):
                                    &Pass::pointCloudCallback, this);
 
   // publishing the pre-processed point cloud from pointnet2
-  time_pub = node_.advertise<std_msgs::Time>("/plane_seg_n1/start_time", 10);
-  preprocessed_cloud_pub = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg_n1/preprocessed_cloud", 10);
+  time_pub = node_.advertise<std_msgs::Time>("/plane_seg_n1/start_time", 100);
+  received_cloud_pub_ = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg_n1/received_cloud", 100);
+  preprocessed_cloud_pub = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg_n1/preprocessed_cloud", 100);
 
   colors_ = {
        51/255.0, 160/255.0, 44/255.0,  //0
@@ -223,19 +224,26 @@ void Pass::preProcessCloud(const std::string& cloudFrame, planeseg::LabeledCloud
   // std::chrono::time_point<std::chrono::high_resolution_clock> startT;
   // startT = std::chrono::high_resolution_clock::now();
 
-  planeseg::Preprocessing preprossesor;
-  preprossesor.setSensorPose(origin, lookDir);
-  preprossesor.setFrame(cloudFrame);
-  preprossesor.setCloud(inCloud);
-  preprossesor.setDebug(true);
-  preprossesor.setVisual(true);
-  planeseg::LabeledCloud::Ptr result_cloud = preprossesor.go();
-
   if (time_pub.getNumSubscribers() > 0) {
     std_msgs::Time timeMsg;
     timeMsg.data = begin;
     time_pub.publish(timeMsg);
   }
+
+  if (received_cloud_pub_.getNumSubscribers() > 0) {
+    sensor_msgs::PointCloud2 output;
+    pcl::toROSMsg(*inCloud, output);
+    output.header.stamp = ros::Time(0, 0);
+    output.header.frame_id = cloudFrame;
+    received_cloud_pub_.publish(output);
+  }
+
+  planeseg::Preprocessing preprossesor;
+  preprossesor.setSensorPose(origin, lookDir);
+  preprossesor.setFrame(cloudFrame);
+  preprossesor.setCloud(inCloud);
+  preprossesor.setDebug(false);
+  planeseg::LabeledCloud::Ptr result_cloud = preprossesor.go();
             
   if (preprocessed_cloud_pub.getNumSubscribers() > 0) {
     sensor_msgs::PointCloud2 output;
@@ -262,8 +270,21 @@ int main( int argc, char** argv ){
   ROS_INFO_STREAM("ros node 1 ready");
   ROS_INFO_STREAM("=============================");
 
-  std::string scene = "scene1";
-  app->preProcessFromFile(scene, 12);
+  std::string scene;
+  // scene = "scene1";
+  // app->preProcessFromFile(scene, 12);
+  // scene = "scene3";
+  // app->preProcessFromFile(scene, 15);
+  // scene = "scene6";
+  // app->preProcessFromFile(scene, 21);
+  scene = "scene7";
+  app->preProcessFromFile(scene, 9);
+  // scene = "scene8";
+  // app->preProcessFromFile(scene, 4);
+  // scene = "scene25";
+  // app->preProcessFromFile(scene, 19);
+  // scene = "steps";
+  // app->preProcessFromFile(scene, 2);
   ros::spin();
 
   return 1;

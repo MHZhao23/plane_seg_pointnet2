@@ -126,7 +126,7 @@ go() {
       // std::cout << "get cluster " << curLabel << " with " << clusterSize << " points " << std::endl;
       // clusterLables.push_back(curLabel);
       validLables.push_back(vaildLabel);
-      result.clusterSizes.push_back(clusterSize);
+      // result.mClusterSizes.push_back(clusterSize);
       vaildLabel += 1;
     }
     else {
@@ -167,6 +167,7 @@ go() {
     MatrixX3f singleCloud;
     singleCloud.resize(singleCloudSize,3);
     for (int i = 0; i < singleCloudSize; ++i) singleCloud.row(i) = it.second[i];
+    result.mClusterSizes.push_back(singleCloudSize);
     clusterPoints.push_back(singleCloud);
   }
 

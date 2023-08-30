@@ -121,7 +121,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.0020000000949949026
       Style: Flat Squares
-      Topic: /plane_seg_n3/received_cloud
+      Topic: /plane_seg_n1/received_cloud
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
