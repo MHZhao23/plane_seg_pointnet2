@@ -106,19 +106,19 @@ go() {
     voxelGrid.filter(*cloud);
     for (int i = 0; i < (int)cloud->size(); ++i) cloud->points[i].label = i;
 
-    // // crop 3m
-    // int crop_xdim = 2;
-    // int crop_ydim = 3;
-    // int crop_zdim = 2;
-    // pcl::CropBox<pcl::PointXYZL> cropBox;
-    // cropBox.setInputCloud(cloud);
-    // Eigen::Vector4f max_pt;
-    // Eigen::Vector4f min_pt;
-    // max_pt << crop_xdim, crop_ydim, crop_zdim, 1;
-    // min_pt << -crop_xdim, -crop_ydim, -crop_zdim, 1;
-    // cropBox.setMax(max_pt);
-    // cropBox.setMin(min_pt);
-    // cropBox.filter(*cloud);
+    // crop 2m
+    int crop_xdim = 2;
+    int crop_ydim = 2;
+    int crop_zdim = 2;
+    pcl::CropBox<pcl::PointXYZL> cropBox;
+    cropBox.setInputCloud(cloud);
+    Eigen::Vector4f max_pt;
+    Eigen::Vector4f min_pt;
+    max_pt << crop_xdim, crop_ydim, crop_zdim, 1;
+    min_pt << -crop_xdim, -crop_ydim, -crop_zdim, 1;
+    cropBox.setMax(max_pt);
+    cropBox.setMin(min_pt);
+    cropBox.filter(*cloud);
 
     if (mDebug) {
         std::cout << "Original cloud size " << mCloud->size() << std::endl;

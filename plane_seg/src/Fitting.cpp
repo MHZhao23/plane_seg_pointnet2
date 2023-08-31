@@ -139,6 +139,80 @@ go() {
   segmenter.setMinPoints(150);
   PlaneSegmenter::Result segmenterResult = segmenter.go();
 
+  // // visualize cluster results
+  // std::vector< pcl::PointCloud<pcl::PointXYZ>::Ptr > cloud_ptrs;
+  // for (int j = 0; j < (int)segmenterResult.mClusterNum; ++j) {
+  //     pcl::PointCloud<pcl::PointXYZ> clusterCloud;
+  //     for (int i = 0; i < (int)mCloud->size(); ++i){
+  //       if (segmenterResult.mLabels[i] == j) {
+  //         pcl::PointXYZ pt;
+  //         pt.x = mCloud->points[i].x;
+  //         pt.y = mCloud->points[i].y;
+  //         pt.z = mCloud->points[i].z;
+  //         clusterCloud.points.push_back(pt);
+  //       }
+  //     }
+  //     clusterCloud.height = clusterCloud.points.size();
+  //     clusterCloud.width = 1;
+
+  //     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_ptr;
+  //     cloud_ptr = clusterCloud.makeShared();
+  //     cloud_ptrs.push_back(cloud_ptr);
+  // }
+  
+  // std::vector<double> colors_ = {
+  //     51/255.0, 160/255.0, 44/255.0,  //0
+  //     166/255.0, 206/255.0, 227/255.0,
+  //     178/255.0, 223/255.0, 138/255.0,//6
+  //     31/255.0, 120/255.0, 180/255.0,
+  //     251/255.0, 154/255.0, 153/255.0,// 12
+  //     227/255.0, 26/255.0, 28/255.0,
+  //     253/255.0, 191/255.0, 111/255.0,// 18
+  //     106/255.0, 61/255.0, 154/255.0,
+  //     255/255.0, 127/255.0, 0/255.0, // 24
+  //     202/255.0, 178/255.0, 214/255.0,
+  //     1.0, 0.0, 0.0, // red // 30
+  //     0.0, 1.0, 0.0, // green
+  //     0.0, 0.0, 1.0, // blue// 36
+  //     1.0, 1.0, 0.0,
+  //     1.0, 0.0, 1.0, // 42
+  //     0.0, 1.0, 1.0,
+  //     0.5, 1.0, 0.0,
+  //     1.0, 0.5, 0.0,
+  //     0.5, 0.0, 1.0,
+  //     1.0, 0.0, 0.5,
+  //     0.0, 0.5, 1.0,
+  //     0.0, 1.0, 0.5,
+  //     1.0, 0.5, 0.5,
+  //     0.5, 1.0, 0.5,
+  //     0.5, 0.5, 1.0,
+  //     0.5, 0.5, 1.0,
+  //     0.5, 1.0, 0.5,
+  //     0.5, 0.5, 1.0};
+
+  // pcl::PointCloud<pcl::PointXYZRGB> combined_cloud;
+  // for (int i = 0; i < (int)cloud_ptrs.size(); ++i) {
+  //   pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_rgb (new pcl::PointCloud<pcl::PointXYZRGB>);
+  //   pcl::copyPointCloud(*cloud_ptrs[i], *cloud_rgb);
+
+  //   int nColor = i % (colors_.size()/3);
+  //   double r = colors_[nColor*3]*255.0;
+  //   double g = colors_[nColor*3+1]*255.0;
+  //   double b = colors_[nColor*3+2]*255.0;
+  //   for (int j = 0; j < (int)cloud_rgb->points.size (); j++){
+  //       cloud_rgb->points[j].r = r;
+  //       cloud_rgb->points[j].g = g;
+  //       cloud_rgb->points[j].b = b;
+  //   }
+  //   combined_cloud += *cloud_rgb;
+  // }
+
+  // pcl::PointCloud<pcl::PointXYZRGB>::Ptr combined_cloud_ptr;
+  // combined_cloud_ptr = combined_cloud.makeShared();
+  // pcl::visualization::CloudViewer viewer2 ("Cloud Viewer 2");
+  // viewer2.showCloud(combined_cloud_ptr);  
+  // while (!viewer2.wasStopped ()) {}
+
   if (mDebug) {
     auto t1 = std::chrono::high_resolution_clock::now();
     auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
@@ -153,7 +227,7 @@ go() {
 
   int numClusters = segmenterResult.mClusterNum;
   Eigen::MatrixXf normDiffs(numClusters, numClusters);
-  Eigen::MatrixXf offsetDiffs(numClusters, numClusters);
+  // Eigen::MatrixXf offsetDiffs(numClusters, numClusters);
   std::vector<Eigen::Vector4f> planeResults;
   std::cout << "numClusters: " << numClusters << std::endl;
   for (int i = 0; i < numClusters; ++i) {
@@ -174,21 +248,21 @@ go() {
       normDiffs(i, j) = ijNormDiff;
       normDiffs(j, i) = ijNormDiff;
 
-      float iOffset = planeFitterRes.mPlane[3];
-      float jOffset = planeResults[j][3];
-      float ijOffsetDiff = std::abs(iOffset - jOffset);
-      // std::cout << i << ", " << j << ", " << ijOffsetDiff << "; " << std::endl;
-      offsetDiffs(i, j) = ijOffsetDiff;
-      offsetDiffs(j, i) = ijOffsetDiff;
+      // float iOffset = planeFitterRes.mPlane[3];
+      // float jOffset = planeResults[j][3];
+      // float ijOffsetDiff = std::abs(iOffset - jOffset);
+      // // std::cout << i << ", " << j << ", " << ijOffsetDiff << "; " << std::endl;
+      // offsetDiffs(i, j) = ijOffsetDiff;
+      // offsetDiffs(j, i) = ijOffsetDiff;
     }
   }
 
   float maxNormDiff = 3*M_PI/180;
-  float maxOffsetDiff = 0.05;
+  // float maxOffsetDiff = 0.05;
   std::vector<int> mergedClusterIdx;
   for (int i = 0; i < numClusters; ++i) {
     for (int j = (i+1); j < numClusters; ++j) {
-      if ((normDiffs(i, j) < maxNormDiff) && (offsetDiffs(i, j) < maxOffsetDiff)) {
+      if (normDiffs(i, j) < maxNormDiff) {
         // std::cout << i << ", " << j << "; " << std::endl;
         // merge cluster i and j
         int iClusterSize = segmenterResult.mClusterSizes[i];
