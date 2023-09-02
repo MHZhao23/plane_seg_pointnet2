@@ -160,6 +160,7 @@ go() {
   }
 
   std::vector<MatrixX3f> clusterPoints;
+  int clusterLabel = 0;
   clusterPoints.reserve(cloudMap.size());
   for (auto it : cloudMap) {
     int singleCloudSize = it.second.size();
@@ -168,7 +169,9 @@ go() {
     singleCloud.resize(singleCloudSize,3);
     for (int i = 0; i < singleCloudSize; ++i) singleCloud.row(i) = it.second[i];
     result.mClusterSizes.push_back(singleCloudSize);
+    result.mClusterLabels.push_back(clusterLabel);
     clusterPoints.push_back(singleCloud);
+    clusterLabel ++;
   }
 
   result.mClusters = clusterPoints;

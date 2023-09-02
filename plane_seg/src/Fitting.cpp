@@ -23,6 +23,8 @@
 #include <pcl/common/common.h>
 #include <pcl/surface/convex_hull.h>
 #include <pcl/io/pcd_io.h>
+#include <pcl/point_types.h>
+#include <pcl/common/distances.h>
 
 #if defined(__clang__)
 # pragma clang diagnostic pop
@@ -135,8 +137,8 @@ go() {
   PlaneSegmenter segmenter;
   segmenter.setData(mCloud, normals);
   segmenter.setSearchRadius(0.03);
-  segmenter.setMaxAngle(mMaxAngleOfPlaneSegmenter);
-  segmenter.setMinPoints(150);
+  segmenter.setMaxAngle(15);
+  segmenter.setMinPoints(200);
   PlaneSegmenter::Result segmenterResult = segmenter.go();
 
   // // visualize cluster results
@@ -213,11 +215,11 @@ go() {
   // viewer2.showCloud(combined_cloud_ptr);  
   // while (!viewer2.wasStopped ()) {}
 
-  if (mDebug) {
-    auto t1 = std::chrono::high_resolution_clock::now();
-    auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
-    std::cout << "finished in " << dt.count()/1e3 << " sec" << std::endl;
-  }
+  // if (mDebug) {
+  //   auto t1 = std::chrono::high_resolution_clock::now();
+  //   auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
+  //   std::cout << "finished in " << dt.count()/1e3 << " sec" << std::endl;
+  // }
 
   // ---------------- fit a plane for each cluster ----------------
   t0 = std::chrono::high_resolution_clock::now();
@@ -226,10 +228,39 @@ go() {
   }
 
   int numClusters = segmenterResult.mClusterNum;
+  std::cout << numClusters << ", " << segmenterResult.mClusters.size() << ", " << segmenterResult.mClusterLabels.size() << ", " << segmenterResult.mClusterSizes.size() << "; " << std::endl;
+  // sort the cluster by size
+  std::vector<std::pair<Eigen::MatrixXf, int>> clusterPairs(numClusters);
+  for (int i = 0; i < numClusters; ++i) {
+    clusterPairs[i].first = segmenterResult.mClusters[i];
+    clusterPairs[i].second = segmenterResult.mClusterSizes[i];
+  }
+  std::sort(clusterPairs.begin(), clusterPairs.end(),
+            [](const std::pair<Eigen::MatrixXf, int>& iA,
+                const std::pair<Eigen::MatrixXf, int>& iB){
+              return iA.second > iB.second;});
+  for (int j = 0; j < numClusters; ++j) {
+    segmenterResult.mClusters[j] = clusterPairs[j].first;
+  }
+  // sort the label by size
+  std::vector<std::pair<int, int>> labelPairs(numClusters);
+  for (int i = 0; i < numClusters; ++i) {
+    labelPairs[i].first = segmenterResult.mClusterLabels[i];
+    labelPairs[i].second = segmenterResult.mClusterSizes[i];
+  }
+  std::sort(labelPairs.begin(), labelPairs.end(),
+            [](const std::pair<int, int>& iA,
+                const std::pair<int, int>& iB){
+              return iA.second > iB.second;});
+  for (int j = 0; j < numClusters; ++j) {
+    segmenterResult.mClusterLabels[j] = labelPairs[j].first;
+  }
+  // sort the size
+  std::sort(segmenterResult.mClusterSizes.begin(), segmenterResult.mClusterSizes.end(), std::greater<int>());
+
   Eigen::MatrixXf normDiffs(numClusters, numClusters);
-  // Eigen::MatrixXf offsetDiffs(numClusters, numClusters);
   std::vector<Eigen::Vector4f> planeResults;
-  std::cout << "numClusters: " << numClusters << std::endl;
+  std::cout << "numClusters: " << numClusters << ", " << segmenterResult.mClusters.size() << std::endl;
   for (int i = 0; i < numClusters; ++i) {
     // std::cout << "\ncluster " << i << " with size of " << segmenterResult.mClusters[i].size() << std::endl;
     PlaneFitter planeFitter;
@@ -243,40 +274,67 @@ go() {
     for (int j = 0; j < i; ++j) {
       Eigen::Vector3f iNorm = planeFitterRes.mPlane.head<3>();
       Eigen::Vector3f jNorm = planeResults[j].head<3>();
-      float ijNormDiff = std::acos(std::abs(iNorm[0] * jNorm[0] + iNorm[1] * jNorm[1] + iNorm[2] * jNorm[2]));
-      // std::cout << i << ", " << j << ", " << ijNormDiff << "; " << std::flush;
+      float ijNormDiff = std::acos(iNorm.dot(jNorm)) / M_PI * 180;
+      // std::cout << i << ", " << j << ", " << ijNormDiff << "; " << std::endl;
       normDiffs(i, j) = ijNormDiff;
       normDiffs(j, i) = ijNormDiff;
-
-      // float iOffset = planeFitterRes.mPlane[3];
-      // float jOffset = planeResults[j][3];
-      // float ijOffsetDiff = std::abs(iOffset - jOffset);
-      // // std::cout << i << ", " << j << ", " << ijOffsetDiff << "; " << std::endl;
-      // offsetDiffs(i, j) = ijOffsetDiff;
-      // offsetDiffs(j, i) = ijOffsetDiff;
     }
   }
 
-  float maxNormDiff = 3*M_PI/180;
-  // float maxOffsetDiff = 0.05;
+  // ---------------- merge clusters based on normal and distance ----------------
+  float maxNormDiff = 15;
+  float maxClusterDis = 0.005;
   std::vector<int> mergedClusterIdx;
   for (int i = 0; i < numClusters; ++i) {
     for (int j = (i+1); j < numClusters; ++j) {
       if (normDiffs(i, j) < maxNormDiff) {
-        // std::cout << i << ", " << j << "; " << std::endl;
-        // merge cluster i and j
+        // compute the minimum distance between the two clusters
         int iClusterSize = segmenterResult.mClusterSizes[i];
         int jClusterSize = segmenterResult.mClusterSizes[j];
-        int mergedSize = iClusterSize + jClusterSize;
-        Eigen::MatrixX3f mergedClusters(mergedSize, 3);
-        for (int k = 0; k < iClusterSize; k++) mergedClusters.row(k) = segmenterResult.mClusters[i].row(k);
-        for (int k = iClusterSize; k < mergedSize; k++) mergedClusters.row(k) = segmenterResult.mClusters[j].row(k-iClusterSize);
-        // update segmenterResult
-        segmenterResult.mClusters.erase (segmenterResult.mClusters.begin() + i);
-        segmenterResult.mClusters.insert(segmenterResult.mClusters.begin() + i, mergedClusters);
-        // segmenterResult.mClusters[i] = mergedClusters;
-        segmenterResult.mClusterSizes[i] = mergedSize;
-        mergedClusterIdx.push_back(j);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud2(new pcl::PointCloud<pcl::PointXYZ>);
+        for (int is = 0; is < iClusterSize; ++is) {
+            pcl::PointXYZ point;
+            point.x = segmenterResult.mClusters[i].row(is)[0];
+            point.y = segmenterResult.mClusters[i].row(is)[1];
+            point.z = segmenterResult.mClusters[i].row(is)[2];
+            cloud1->push_back(point);
+        }
+        for (int js = 0; js < jClusterSize; ++js) {
+            pcl::PointXYZ point;
+            point.x = segmenterResult.mClusters[j].row(js)[0];
+            point.y = segmenterResult.mClusters[j].row(js)[1];
+            point.z = segmenterResult.mClusters[j].row(js)[2];
+            cloud2->push_back(point);
+        }
+        pcl::KdTreeFLANN<pcl::PointXYZ> kdtree2;
+        kdtree2.setInputCloud(cloud2);
+        double miniDistance = std::numeric_limits<double>::max();
+        for (const auto& point1 : cloud1->points) {
+            std::vector<int> indices(1);
+            std::vector<float> distances(1);
+            if (kdtree2.nearestKSearch(point1, 1, indices, distances) > 0) {
+                double distance = distances[0];
+                if (distance < miniDistance) miniDistance = distance;
+                if (miniDistance < maxClusterDis) break;
+            }
+        }
+
+        // std::cout << miniDistance << std::endl;
+        if (miniDistance < maxClusterDis) {
+          std::cout << i << ", " << j << "; " << iClusterSize << ", " << jClusterSize << "; " << normDiffs(i, j) << ", " << miniDistance << std::endl;
+          // merge cluster i and j
+          int mergedSize = iClusterSize + jClusterSize;
+          Eigen::MatrixX3f mergedClusters(mergedSize, 3);
+          for (int k = 0; k < iClusterSize; k++) mergedClusters.row(k) = segmenterResult.mClusters[i].row(k);
+          for (int k = iClusterSize; k < mergedSize; k++) mergedClusters.row(k) = segmenterResult.mClusters[j].row(k-iClusterSize);
+          // update segmenterResult
+          segmenterResult.mClusters.erase (segmenterResult.mClusters.begin() + i);
+          segmenterResult.mClusters.insert(segmenterResult.mClusters.begin() + i, mergedClusters);
+          // segmenterResult.mClusters[i] = mergedClusters;
+          segmenterResult.mClusterSizes[i] = mergedSize;
+          mergedClusterIdx.push_back(segmenterResult.mClusterLabels[j]);
+        }
       }
     }
   }
@@ -284,10 +342,13 @@ go() {
   int erasedNum = 0;
   if (mergedClusterIdx.size() != 0) {
     for (auto & idx : mergedClusterIdx) {
-      segmenterResult.mClusters.erase (segmenterResult.mClusters.begin() + (idx-erasedNum));
-      segmenterResult.mLabels.erase (segmenterResult.mLabels.begin() + (idx-erasedNum));
-      segmenterResult.mClusterSizes.erase (segmenterResult.mClusterSizes.begin() + (idx-erasedNum));
-      erasedNum++; 
+      for (int j = 0; j < segmenterResult.mClusterLabels.size(); ++j) {
+        if (segmenterResult.mClusterLabels[j] == idx) {
+          segmenterResult.mClusters.erase (segmenterResult.mClusters.begin() + j);
+          segmenterResult.mClusterLabels.erase (segmenterResult.mClusterLabels.begin() + j);
+          segmenterResult.mClusterSizes.erase (segmenterResult.mClusterSizes.begin() + j);
+        }
+      }
     }
     segmenterResult.mClusterNum = segmenterResult.mClusters.size();
   }
@@ -306,7 +367,7 @@ go() {
 
   std::cout << "numClusters after merging: " << segmenterResult.mClusterNum << std::endl;
 
-  // ---------------- merge planes and rectangularize ----------------
+  // ---------------- rectangularize the clusters ----------------
   std::vector<RectangleFitter::Result> results;
   results.reserve(segmenterResult.mClusterNum);
   for (int i = 0; i < segmenterResult.mClusterNum; ++i) {

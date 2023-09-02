@@ -14,6 +14,7 @@ public:
   struct Result {
     std::vector<MatrixX3f> mClusters;
     std::vector<int> mLabels;
+    std::vector<int> mClusterLabels;
     std::vector<int> mClusterSizes;
     int mClusterNum;
 

@@ -210,7 +210,6 @@ void Pass::fittingPlane(const std::string& cloudFrame, planeseg::LabeledCloud::P
   planeseg::Fitting cfitter;
   cfitter.setFrame(cloudFrame);
   cfitter.setCloud(inCloud);
-  cfitter.setMaxAngleOfPlaneSegmenter(15);
   cfitter.setDebug(false);
   cfitter.setVisual(false);
   fresult_ = cfitter.go();
