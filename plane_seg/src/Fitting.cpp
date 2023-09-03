@@ -141,85 +141,85 @@ go() {
   segmenter.setMinPoints(200);
   PlaneSegmenter::Result segmenterResult = segmenter.go();
 
-  // // visualize cluster results
-  // std::vector< pcl::PointCloud<pcl::PointXYZ>::Ptr > cloud_ptrs;
-  // for (int j = 0; j < (int)segmenterResult.mClusterNum; ++j) {
-  //     pcl::PointCloud<pcl::PointXYZ> clusterCloud;
-  //     for (int i = 0; i < (int)mCloud->size(); ++i){
-  //       if (segmenterResult.mLabels[i] == j) {
-  //         pcl::PointXYZ pt;
-  //         pt.x = mCloud->points[i].x;
-  //         pt.y = mCloud->points[i].y;
-  //         pt.z = mCloud->points[i].z;
-  //         clusterCloud.points.push_back(pt);
-  //       }
-  //     }
-  //     clusterCloud.height = clusterCloud.points.size();
-  //     clusterCloud.width = 1;
+  // visualize cluster results
+  std::vector< pcl::PointCloud<pcl::PointXYZ>::Ptr > cloud_ptrs;
+  for (int j = 0; j < (int)segmenterResult.mClusterNum; ++j) {
+      pcl::PointCloud<pcl::PointXYZ> clusterCloud;
+      for (int i = 0; i < (int)mCloud->size(); ++i){
+        if (segmenterResult.mLabels[i] == j) {
+          pcl::PointXYZ pt;
+          pt.x = mCloud->points[i].x;
+          pt.y = mCloud->points[i].y;
+          pt.z = mCloud->points[i].z;
+          clusterCloud.points.push_back(pt);
+        }
+      }
+      clusterCloud.height = clusterCloud.points.size();
+      clusterCloud.width = 1;
 
-  //     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_ptr;
-  //     cloud_ptr = clusterCloud.makeShared();
-  //     cloud_ptrs.push_back(cloud_ptr);
-  // }
+      pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_ptr;
+      cloud_ptr = clusterCloud.makeShared();
+      cloud_ptrs.push_back(cloud_ptr);
+  }
   
-  // std::vector<double> colors_ = {
-  //     51/255.0, 160/255.0, 44/255.0,  //0
-  //     166/255.0, 206/255.0, 227/255.0,
-  //     178/255.0, 223/255.0, 138/255.0,//6
-  //     31/255.0, 120/255.0, 180/255.0,
-  //     251/255.0, 154/255.0, 153/255.0,// 12
-  //     227/255.0, 26/255.0, 28/255.0,
-  //     253/255.0, 191/255.0, 111/255.0,// 18
-  //     106/255.0, 61/255.0, 154/255.0,
-  //     255/255.0, 127/255.0, 0/255.0, // 24
-  //     202/255.0, 178/255.0, 214/255.0,
-  //     1.0, 0.0, 0.0, // red // 30
-  //     0.0, 1.0, 0.0, // green
-  //     0.0, 0.0, 1.0, // blue// 36
-  //     1.0, 1.0, 0.0,
-  //     1.0, 0.0, 1.0, // 42
-  //     0.0, 1.0, 1.0,
-  //     0.5, 1.0, 0.0,
-  //     1.0, 0.5, 0.0,
-  //     0.5, 0.0, 1.0,
-  //     1.0, 0.0, 0.5,
-  //     0.0, 0.5, 1.0,
-  //     0.0, 1.0, 0.5,
-  //     1.0, 0.5, 0.5,
-  //     0.5, 1.0, 0.5,
-  //     0.5, 0.5, 1.0,
-  //     0.5, 0.5, 1.0,
-  //     0.5, 1.0, 0.5,
-  //     0.5, 0.5, 1.0};
+  std::vector<double> colors_ = {
+      51/255.0, 160/255.0, 44/255.0,  //0
+      166/255.0, 206/255.0, 227/255.0,
+      178/255.0, 223/255.0, 138/255.0,//6
+      31/255.0, 120/255.0, 180/255.0,
+      251/255.0, 154/255.0, 153/255.0,// 12
+      227/255.0, 26/255.0, 28/255.0,
+      253/255.0, 191/255.0, 111/255.0,// 18
+      106/255.0, 61/255.0, 154/255.0,
+      255/255.0, 127/255.0, 0/255.0, // 24
+      202/255.0, 178/255.0, 214/255.0,
+      1.0, 0.0, 0.0, // red // 30
+      0.0, 1.0, 0.0, // green
+      0.0, 0.0, 1.0, // blue// 36
+      1.0, 1.0, 0.0,
+      1.0, 0.0, 1.0, // 42
+      0.0, 1.0, 1.0,
+      0.5, 1.0, 0.0,
+      1.0, 0.5, 0.0,
+      0.5, 0.0, 1.0,
+      1.0, 0.0, 0.5,
+      0.0, 0.5, 1.0,
+      0.0, 1.0, 0.5,
+      1.0, 0.5, 0.5,
+      0.5, 1.0, 0.5,
+      0.5, 0.5, 1.0,
+      0.5, 0.5, 1.0,
+      0.5, 1.0, 0.5,
+      0.5, 0.5, 1.0};
 
-  // pcl::PointCloud<pcl::PointXYZRGB> combined_cloud;
-  // for (int i = 0; i < (int)cloud_ptrs.size(); ++i) {
-  //   pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_rgb (new pcl::PointCloud<pcl::PointXYZRGB>);
-  //   pcl::copyPointCloud(*cloud_ptrs[i], *cloud_rgb);
+  pcl::PointCloud<pcl::PointXYZRGB> combined_cloud;
+  for (int i = 0; i < (int)cloud_ptrs.size(); ++i) {
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_rgb (new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::copyPointCloud(*cloud_ptrs[i], *cloud_rgb);
 
-  //   int nColor = i % (colors_.size()/3);
-  //   double r = colors_[nColor*3]*255.0;
-  //   double g = colors_[nColor*3+1]*255.0;
-  //   double b = colors_[nColor*3+2]*255.0;
-  //   for (int j = 0; j < (int)cloud_rgb->points.size (); j++){
-  //       cloud_rgb->points[j].r = r;
-  //       cloud_rgb->points[j].g = g;
-  //       cloud_rgb->points[j].b = b;
-  //   }
-  //   combined_cloud += *cloud_rgb;
-  // }
+    int nColor = i % (colors_.size()/3);
+    double r = colors_[nColor*3]*255.0;
+    double g = colors_[nColor*3+1]*255.0;
+    double b = colors_[nColor*3+2]*255.0;
+    for (int j = 0; j < (int)cloud_rgb->points.size (); j++){
+        cloud_rgb->points[j].r = r;
+        cloud_rgb->points[j].g = g;
+        cloud_rgb->points[j].b = b;
+    }
+    combined_cloud += *cloud_rgb;
+  }
 
-  // pcl::PointCloud<pcl::PointXYZRGB>::Ptr combined_cloud_ptr;
-  // combined_cloud_ptr = combined_cloud.makeShared();
-  // pcl::visualization::CloudViewer viewer2 ("Cloud Viewer 2");
-  // viewer2.showCloud(combined_cloud_ptr);  
-  // while (!viewer2.wasStopped ()) {}
+  pcl::PointCloud<pcl::PointXYZRGB>::Ptr combined_cloud_ptr;
+  combined_cloud_ptr = combined_cloud.makeShared();
+  pcl::visualization::CloudViewer viewer2 ("Cloud Viewer 2");
+  viewer2.showCloud(combined_cloud_ptr);  
+  while (!viewer2.wasStopped ()) {}
 
-  // if (mDebug) {
-  //   auto t1 = std::chrono::high_resolution_clock::now();
-  //   auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
-  //   std::cout << "finished in " << dt.count()/1e3 << " sec" << std::endl;
-  // }
+  if (mDebug) {
+    auto t1 = std::chrono::high_resolution_clock::now();
+    auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0);
+    std::cout << "finished in " << dt.count()/1e3 << " sec" << std::endl;
+  }
 
   // ---------------- fit a plane for each cluster ----------------
   t0 = std::chrono::high_resolution_clock::now();
@@ -228,7 +228,7 @@ go() {
   }
 
   int numClusters = segmenterResult.mClusterNum;
-  std::cout << numClusters << ", " << segmenterResult.mClusters.size() << ", " << segmenterResult.mClusterLabels.size() << ", " << segmenterResult.mClusterSizes.size() << "; " << std::endl;
+  // std::cout << numClusters << ", " << segmenterResult.mClusters.size() << ", " << segmenterResult.mClusterLabels.size() << ", " << segmenterResult.mClusterSizes.size() << "; " << std::endl;
   // sort the cluster by size
   std::vector<std::pair<Eigen::MatrixXf, int>> clusterPairs(numClusters);
   for (int i = 0; i < numClusters; ++i) {
@@ -260,7 +260,7 @@ go() {
 
   Eigen::MatrixXf normDiffs(numClusters, numClusters);
   std::vector<Eigen::Vector4f> planeResults;
-  std::cout << "numClusters: " << numClusters << ", " << segmenterResult.mClusters.size() << std::endl;
+  // std::cout << "numClusters: " << numClusters << ", " << segmenterResult.mClusters.size() << std::endl;
   for (int i = 0; i < numClusters; ++i) {
     // std::cout << "\ncluster " << i << " with size of " << segmenterResult.mClusters[i].size() << std::endl;
     PlaneFitter planeFitter;
@@ -274,7 +274,7 @@ go() {
     for (int j = 0; j < i; ++j) {
       Eigen::Vector3f iNorm = planeFitterRes.mPlane.head<3>();
       Eigen::Vector3f jNorm = planeResults[j].head<3>();
-      float ijNormDiff = std::acos(iNorm.dot(jNorm)) / M_PI * 180;
+      float ijNormDiff = std::acos(iNorm.dot(jNorm));
       // std::cout << i << ", " << j << ", " << ijNormDiff << "; " << std::endl;
       normDiffs(i, j) = ijNormDiff;
       normDiffs(j, i) = ijNormDiff;
@@ -282,7 +282,7 @@ go() {
   }
 
   // ---------------- merge clusters based on normal and distance ----------------
-  float maxNormDiff = 15;
+  float maxNormDiff = 15*M_PI/180;
   float maxClusterDis = 0.005;
   std::vector<int> mergedClusterIdx;
   for (int i = 0; i < numClusters; ++i) {
@@ -322,7 +322,7 @@ go() {
 
         // std::cout << miniDistance << std::endl;
         if (miniDistance < maxClusterDis) {
-          std::cout << i << ", " << j << "; " << iClusterSize << ", " << jClusterSize << "; " << normDiffs(i, j) << ", " << miniDistance << std::endl;
+          // std::cout << i << ", " << j << "; " << iClusterSize << ", " << jClusterSize << "; " << normDiffs(i, j) << ", " << miniDistance << std::endl;
           // merge cluster i and j
           int mergedSize = iClusterSize + jClusterSize;
           Eigen::MatrixX3f mergedClusters(mergedSize, 3);
@@ -339,7 +339,6 @@ go() {
     }
   }
 
-  int erasedNum = 0;
   if (mergedClusterIdx.size() != 0) {
     for (auto & idx : mergedClusterIdx) {
       for (int j = 0; j < segmenterResult.mClusterLabels.size(); ++j) {
@@ -376,7 +375,7 @@ go() {
     fitter.setAlgorithm((RectangleFitter::Algorithm)mRectangleFitAlgorithm);
     fitter.setData(segmenterResult.mClusters[i], mergedPlaneResults[i]);
     auto result = fitter.go();
-    results.push_back(result);
+    if (result.mConvexArea > 0.04) results.push_back(result);
   }
 
   if (mDebug) {

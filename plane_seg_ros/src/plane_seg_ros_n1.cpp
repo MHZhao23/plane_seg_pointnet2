@@ -74,7 +74,7 @@ class Pass{
 
     void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr &msg);
 
-    void preProcessFromFile(std::string scene, int test_example);
+    void preProcessFromFile(std::string sceneName);
     void preProcessCloud(const std::string& cloudFrame, planeseg::LabeledCloud::Ptr& inCloud, Eigen::Vector3f origin, Eigen::Vector3f lookDir);
 
   private:
@@ -190,18 +190,18 @@ void Pass::pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr &msg){
 }
 
 
-void Pass::preProcessFromFile(std::string scene, int test_example){
+void Pass::preProcessFromFile(std::string sceneName){
 
   // to allow ros connections to register
   sleep(2);
 
   std::string home_dir = ros::package::getPath("plane_seg_ros");
-  std::string inFile = home_dir + "/data/realdata/" + scene + "_" + std::to_string(test_example) + ".pcd";
+  std::string inFile = home_dir + "/data/" + sceneName + ".pcd";
   Eigen::Vector3f origin, lookDir;
   origin << 0, 0, 0;
   lookDir << 1, 0, 0;
 
-  std::cout << "\n =========== Processing test example " << test_example << " ===========\n";
+  std::cout << "\n =========== Processing test example " << sceneName << " ===========\n";
   std::cout << inFile << "\n";
 
   std::size_t found_pcd = inFile.find(".pcd");
@@ -271,20 +271,15 @@ int main( int argc, char** argv ){
   ROS_INFO_STREAM("=============================");
 
   std::string scene;
-  // scene = "scene1";
-  // app->preProcessFromFile(scene, 12);
-  // scene = "scene3";
-  // app->preProcessFromFile(scene, 15);
-  // scene = "scene6";
-  // app->preProcessFromFile(scene, 21);
-  scene = "scene7";
-  app->preProcessFromFile(scene, 9);
-  // scene = "scene8";
-  // app->preProcessFromFile(scene, 4);
-  // scene = "scene25";
-  // app->preProcessFromFile(scene, 19);
-  // scene = "steps";
-  // app->preProcessFromFile(scene, 2);
+  // app->preProcessFromFile("realdata/scene1_12");
+  // app->preProcessFromFile("realdata/scene3_15");
+  // app->preProcessFromFile("realdata/scene6_21");
+  // app->preProcessFromFile("realdata/scene7_9");
+  // app->preProcessFromFile("realdata/scene8_4");
+  // app->preProcessFromFile("realdata/testscene25_19");
+  app->preProcessFromFile("realdata/steps_2");
+  // app->preProcessFromFile("realdata/terrain_0");
+  // app->preProcessFromFile("benchmark/rgbd_dataset_freiburg3_long_office_household_validation/1341848149.066840");
   ros::spin();
 
   return 1;

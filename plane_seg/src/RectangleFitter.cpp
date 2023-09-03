@@ -181,6 +181,7 @@ RectangleFitter::go() {
   for (auto& pt : hull.points) {
     result.mConvexHull.push_back(pt.getVector3fMap());
   }
+  // std::cout << result.mSize << "; " << result.mArea << "; " << result.mConvexArea << "; " << std::endl;
 
   // adjust result so that max dimension matches prior size
   if (mRectangleSize.norm() > 1e-5) {
