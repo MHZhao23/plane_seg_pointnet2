@@ -434,7 +434,6 @@ def callback(data):
     num_points = 512
     block_size = 0.2
     nn_time = 0.0
-    infer_start = time.time()
 
     with torch.no_grad():
         pred_label = np.zeros((points.shape[0], 1), dtype=int)
@@ -443,8 +442,8 @@ def callback(data):
         s_batch_num = (num_blocks + batch_size - 1) // batch_size
         batch_data = np.zeros((batch_size, num_points, 6))
         batch_point_index = np.zeros((batch_size, num_points), dtype=int)
-        # print("num of points: ", points.shape[0], "after grouping: ", scene_data.shape, "num of batches: ", s_batch_num, )
 
+        infer_start = time.time()
         for sbatch in range(s_batch_num):
             start_idx = sbatch * batch_size
             end_idx = min((sbatch + 1) * batch_size, num_blocks)
@@ -455,18 +454,14 @@ def callback(data):
             torch_data = torch.Tensor(batch_data)
             torch_data = torch_data.float().to(device)
             torch_data = torch_data.transpose(2, 1)
-            # t11 = time.time()
             seg_pred, _ = classifier(torch_data)
-            t12 = time.time()
             batch_pred_label = seg_pred.contiguous().cpu().data.max(2)[1].numpy()
 
-            # t2 = time.time()
             batch_pred_label_all = batch_pred_label.reshape(-1)
             batch_point_index_all = batch_point_index.reshape(-1)
             batch_pred_label_plane = batch_pred_label_all[batch_pred_label_all==1]
             batch_point_index_plane = batch_point_index_all[batch_pred_label_all==1]
             pred_label[batch_point_index_plane] = 1
-            # nn_time += (t12 - t11)
         infer_end = time.time()
         # print("NN cost: ", nn_time)
         print("Inference cost: ", infer_end - infer_start)
