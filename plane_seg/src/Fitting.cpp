@@ -42,7 +42,7 @@ using namespace std::chrono_literals; // to recognize ms in sleep for
 Fitting::
 Fitting() {
   setBlockDimensions(Eigen::Vector3f(15+3/8.0, 15+5/8.0, 5+5/8.0)*0.0254);
-  setMaxEstimationError(0.02); // RANSAC
+  setMaxEstimationError(0.01); // RANSAC
   setMaxIterations(1000); // RANSAC
   setRectangleFitAlgorithm(RectangleFitAlgorithm::MinimumArea);
   setDebug(true);

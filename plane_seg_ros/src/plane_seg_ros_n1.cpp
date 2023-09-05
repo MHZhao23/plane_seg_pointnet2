@@ -96,13 +96,13 @@ Pass::Pass(ros::NodeHandle node_):
     tfListener_(tfBuffer_) {
 
   // subscribe the input point cloud
-  point_cloud_sub_ = node_.subscribe ("/ouster/points", 100,
+  point_cloud_sub_ = node_.subscribe ("/ouster/points", 10,
                                    &Pass::pointCloudCallback, this);
 
   // publishing the pre-processed point cloud from pointnet2
-  time_pub = node_.advertise<std_msgs::Time>("/plane_seg_n1/start_time", 100);
-  received_cloud_pub_ = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg_n1/received_cloud", 100);
-  preprocessed_cloud_pub = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg_n1/preprocessed_cloud", 100);
+  time_pub = node_.advertise<std_msgs::Time>("/plane_seg_n1/start_time", 10);
+  received_cloud_pub_ = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg_n1/received_cloud", 10);
+  preprocessed_cloud_pub = node_.advertise<sensor_msgs::PointCloud2>("/plane_seg_n1/preprocessed_cloud", 10);
 
   colors_ = {
        51/255.0, 160/255.0, 44/255.0,  //0
@@ -274,11 +274,11 @@ int main( int argc, char** argv ){
   // app->preProcessFromFile("realdata/scene1_12");
   // app->preProcessFromFile("realdata/scene3_15");
   // app->preProcessFromFile("realdata/scene6_21");
-  app->preProcessFromFile("realdata/scene7_9");
+  // app->preProcessFromFile("realdata/scene7_9");
   // app->preProcessFromFile("realdata/scene8_4");
   // app->preProcessFromFile("realdata/testscene25_19");
   // app->preProcessFromFile("realdata/steps_2");
-  // app->preProcessFromFile("realdata/terrain_0");
+  app->preProcessFromFile("realdata/terrain_0");
   // app->preProcessFromFile("benchmark/rgbd_dataset_freiburg3_long_office_household_validation/1341848149.066840");
   ros::spin();
 

@@ -495,7 +495,7 @@ if __name__ == '__main__':
     rospy.init_node('plane_seg_n2', anonymous=True)
     rospy.loginfo("ros node 2 ready")
     rospy.loginfo("=============================")
-    rate = rospy.Rate(100) # 10hz
+    rate = rospy.Rate(10) # 10hz
 
     rospy.Subscriber("/plane_seg_n1/preprocessed_cloud", PointCloud2, callback)
     rospy.spin()

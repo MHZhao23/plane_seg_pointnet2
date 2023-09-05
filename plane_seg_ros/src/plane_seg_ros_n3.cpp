@@ -107,9 +107,9 @@ Pass::Pass(ros::NodeHandle node_):
     tfListener_(tfBuffer_) {
 
   // // subscribe the labelled point cloud
-  time_sub_ = node_.subscribe("/plane_seg_n1/start_time", 100,
+  time_sub_ = node_.subscribe("/plane_seg_n1/start_time", 10,
                                         &Pass::timeCallback, this);
-  plane_cloud_sub_ = node_.subscribe("/plane_seg_n2/plane_cloud", 100,
+  plane_cloud_sub_ = node_.subscribe("/plane_seg_n2/plane_cloud", 10,
                                         &Pass::planePointCloudCallback, this);
                                         
   // publishing the results
@@ -493,6 +493,7 @@ int main( int argc, char** argv ){
   // }
 
   ros::spin();
+  // ros::spinOnce();  
 
   return 1;
 }
