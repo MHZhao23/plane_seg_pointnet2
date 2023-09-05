@@ -1,5 +1,5 @@
 <launch>
-  <node name="plane_seg_n1" pkg="plane_seg_ros" type="plane_seg_ros_n1" output="screen">
+  <node name="plane_seg_n1" pkg="plane_seg_ros" type="plane_seg_rosc" output="screen">
     <remap from="/plane_seg_n1/pose" to="/state_estimator/pose_in_odom"/>
     <param name="/run_test_program" value="true" />
   </node>
@@ -7,10 +7,5 @@
   <node name="plane_seg_n2" pkg="plane_seg_ros" type="plane_seg_rospy.py" output="screen">
     <remap from="/plane_seg_n2/pose" to="/state_estimator/pose_in_odom"/>
   ..
-  </node>
-
-  <node name="plane_seg_n3" pkg="plane_seg_ros" type="plane_seg_ros_n3" output="screen">
-    <remap from="/plane_seg_n3/pose" to="/state_estimator/pose_in_odom"/>
-    <param name="/run_test_program" value="true" />
   </node>
 </launch>

@@ -278,8 +278,9 @@ int main( int argc, char** argv ){
   // app->preProcessFromFile("realdata/scene8_4");
   // app->preProcessFromFile("realdata/testscene25_19");
   // app->preProcessFromFile("realdata/steps_2");
-  app->preProcessFromFile("realdata/terrain_0");
+  // app->preProcessFromFile("realdata/terrain_0");
   // app->preProcessFromFile("benchmark/rgbd_dataset_freiburg3_long_office_household_validation/1341848149.066840");
+  app->preProcessFromFile("TUM/desk/labeled_cloud/1305031453.374112.pcd");
   ros::spin();
 
   return 1;

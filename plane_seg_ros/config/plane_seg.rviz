@@ -77,14 +77,14 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.009999999776482582
       Style: Flat Squares
-      Topic: /plane_seg_n3/hull_cloud
+      Topic: /plane_seg_n1/hull_cloud
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
     - Class: rviz/Marker
       Enabled: true
-      Marker Topic: /plane_seg_n3/hull_markers
+      Marker Topic: /plane_seg_n1/hull_markers
       Name: hull markers
       Namespaces:
         {}
@@ -92,7 +92,7 @@ Visualization Manager:
       Value: true
     - Class: rviz/MarkerArray
       Enabled: true
-      Marker Topic: /plane_seg_n3/hull_marker_array
+      Marker Topic: /plane_seg_n1/hull_marker_array
       Name: hull marker array
       Namespaces:
         {}
@@ -139,7 +139,7 @@ Visualization Manager:
       Shaft Length: 1
       Shaft Radius: 0.05000000074505806
       Shape: Axes
-      Topic: /plane_seg_n3/look_pose
+      Topic: /plane_seg_n1/look_pose
       Unreliable: false
       Value: true
     - Alpha: 0.4000000059604645
